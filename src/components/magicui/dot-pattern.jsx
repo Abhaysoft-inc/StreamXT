@@ -1,6 +1,6 @@
 "use client";;
 import { cn } from "@/lib/utils";
-import { motion } from "motion/react";
+import { motion } from "framer-motion";
 import React, { useEffect, useId, useRef, useState } from "react";
 
 /**
@@ -101,20 +101,20 @@ export function DotPattern({
           animate={
             glow
               ? {
-                  opacity: [0.4, 1, 0.4],
-                  scale: [1, 1.5, 1],
-                }
+                opacity: [0.4, 1, 0.4],
+                scale: [1, 1.5, 1],
+              }
               : {}
           }
           transition={
             glow
               ? {
-                  duration: dot.duration,
-                  repeat: Infinity,
-                  repeatType: "reverse",
-                  delay: dot.delay,
-                  ease: "easeInOut",
-                }
+                duration: dot.duration,
+                repeat: Infinity,
+                repeatType: "reverse",
+                delay: dot.delay,
+                ease: "easeInOut",
+              }
               : {}
           } />
       ))}
