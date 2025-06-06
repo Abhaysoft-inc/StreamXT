@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { IconBrandGithub } from "@tabler/icons-react"
 
 const figtree = Figtree({
-
+  subsets: ['latin']
 });
 
 
