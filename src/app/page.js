@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { IconBrandGithub } from "@tabler/icons-react"
 
 const figtree = Figtree({
-  subsets: ['bold']
+
 });
 
 
@@ -40,8 +40,8 @@ export default function Home() {
             </div>
             <div className="flex justify-center mt-10 gap-6">
 
-              <Button className={`bg-white text-black font-semibold`} >Join the waitlist!</Button>
-              <Button className={` text-white font-semibold`} > <IconBrandGithub /> Contribute to StreamXT</Button>
+              <Button className={`bg-white text-black font-semibold cursor-pointer`} >Join the waitlist!</Button>
+              <Button className={` text-white font-semibold cursor-pointer`} > <IconBrandGithub /> Contribute to StreamXT</Button>
             </div>
 
 
