@@ -64,6 +64,8 @@ io.on('connection', (socket) => {
 
     socket.on('disconnect', () => {
         console.log('Client disconnected:', socket.id);
+
+        // cleanup function chalana h jisse ki sab kuch band ho jay aur stream ruk jay
     });
 });
 

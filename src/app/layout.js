@@ -1,5 +1,5 @@
 import "./globals.css";
-
+import { ClerkProvider } from "@clerk/nextjs";
 
 export const metadata = {
   title: "StreamXT",
@@ -8,12 +8,10 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
-      <body
-        className={``}
-      >
-        {children}
-      </body>
-    </html>
+    <ClerkProvider>
+      <html lang="en" className="dark">
+        <body className={``}>{children}</body>
+      </html>
+    </ClerkProvider>
   );
 }

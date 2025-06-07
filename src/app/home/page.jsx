@@ -31,7 +31,7 @@ const StreamPage = () => {
                 // const mediaRecorder = new MediaRecorder(stream);
 
                 mediaRecorderRef.current = new MediaRecorder(stream, {
-                    imeType: 'video/webm;codecs=vp8,opus',
+                    mimeType: 'video/webm;codecs=vp8,opus',
                     videoBitsPerSecond: 2500000 // 2.5 Mbps
                 })
 
@@ -58,7 +58,7 @@ const StreamPage = () => {
             }
         }
 
-        // startStream();
+        startStream();
 
         return () => {
 
@@ -76,7 +76,7 @@ const StreamPage = () => {
     return (
         <>
 
-            {/* <video ref={videoRef} autoPlay muted></video> */}
+            <video ref={videoRef} autoPlay muted></video>
 
 
         </>
