@@ -22,13 +22,13 @@ const Navbar = () => {
                         <li className="nav-items text-md">Home</li>
                         <li className="nav-items text-md">Pricing</li>
                         <li className="nav-items text-md">Docs</li>
-                        <Link href="/auth/signup" className='cursor-pointer bg-gradient-to-r from-orange-600 via-orange-400 to-orange-600 px-5 py-1 rounded-full text-white'>Get Started</Link>
+                        <Link href="/auth/signin" className='cursor-pointer bg-gradient-to-r from-orange-600 via-orange-400 to-orange-600 px-5 py-1 rounded-full text-white'>Get Started</Link>
                     </ul>
                 </div>
 
 
             </div>
-            <div className="w-full border-b-[0.5px] opacity-10 "></div>
+            <div className="w-full border-b-[0.5px] opacity-10 bg-white "></div>
         </>
     )
 }

@@ -8,7 +8,7 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <ClerkProvider>
+    <ClerkProvider signUpFallbackRedirectUrl="/dashboard">
       <html lang="en" className="dark">
         <body className={``}>{children}</body>
       </html>
