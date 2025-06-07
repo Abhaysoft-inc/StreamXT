@@ -1,5 +1,5 @@
-
-import { Camera, CircleX, Mic, MonitorUp, UserPlus, Video } from 'lucide-react';
+import { IconCamera } from '@tabler/icons-react';
+import { Camera, CircleX, Mic, MonitorUp, Presentation, UserPlus, Video } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react'
 
 const Studio = () => {
@@ -14,7 +14,8 @@ const Studio = () => {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
                     audio: isAudioEnabled,
-                    video: isCameraEnabled
+                    video: isCameraEnabled,
+
                 });
 
                 if (videoRef.current) {
