@@ -11,7 +11,7 @@ const Dashboard = () => {
       <Navbar />
 
       <div className="main-screen flex h-[573px]">
-        <div className="sidebar w-1/5 bg-black border-r-[0.5px] border-gray-500 border-opacity-5 ">
+        <div className="sidebar w-1/5  border-r-[0.5px] border-gray-500 border-opacity-5 ">
           <Sidebar />
 
         </div>

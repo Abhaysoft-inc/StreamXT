@@ -10,7 +10,7 @@ const io = socketIo(server, {
 });
 
 // YouTube RTMP settings
-const YOUTUBE_URL = 'rtmp://a.rtmp.youtube.com/live2/';
+const YOUTUBE_URL = 'rtmp://localhost/live/';
 const STREAM_KEY = 'af49-pwf7-xcjp-8mgg-ck19'; // Replace with your stream key
 
 io.on('connection', socket => {
@@ -25,7 +25,8 @@ io.on('connection', socket => {
             '-preset', 'veryfast',
             '-tune', 'zerolatency',
             '-f', 'flv',            // Output format
-            `${YOUTUBE_URL}${STREAM_KEY}`
+            // `${YOUTUBE_URL}${STREAM_KEY}`
+            `${YOUTUBE_URL}`
         ]);
 
         // Log FFmpeg output for debugging

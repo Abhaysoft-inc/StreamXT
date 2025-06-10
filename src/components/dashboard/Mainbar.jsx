@@ -16,6 +16,9 @@ const Mainbar = () => {
     const navToYTStream = () => {
         nav.push('/dashboard/stream-to-youtube')
     }
+    const navToRecord = () => {
+        nav.push('/record')
+    }
 
     return (
         <div className={`p-16 ${figtree.className}`}>
@@ -28,7 +31,7 @@ const Mainbar = () => {
                     <p className="text-lg">Stream to YouTube</p>
                 </Button>
 
-                <Button className="flex py-6 w-60 gap-3 cursor-pointer" variant={"outline"}>
+                <Button className="flex py-6 w-60 gap-3 cursor-pointer" variant={"outline"} onClick={navToRecord}>
                     <Camera size={80} />
                     <p className="text-lg">Record video</p>
                 </Button>

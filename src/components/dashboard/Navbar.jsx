@@ -10,7 +10,7 @@ const Navbar = () => {
     return (
         <>
 
-            <div className={`${figtree.className} px-10 py-2.5 items-center bg-transparent `}>
+            <div className={`${figtree.className} px-10 py-2 items-center bg-transparent `}>
 
                 <div className="flex justify-between items-center">
                     <Link className="brand text-2xl cursor-pointer" href={'/'}>StreamXT</Link>

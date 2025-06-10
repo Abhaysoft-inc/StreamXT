@@ -15,6 +15,7 @@ const Studio = () => {
     const [isScreenSharing, setIsScreenSharing] = useState(false);
     const [isLive, setIsLive] = useState(false);
     const [connectionStatus, setConnectionStatus] = useState('disconnected');
+    const [isChatLive, setisChatLive] = useState(false)
 
 
     // Function to start camera 
@@ -22,7 +23,9 @@ const Studio = () => {
     const startCamera = async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({
+                facingMode: 'user',
                 video: { width: 1280, height: 720 },
+
                 audio: true,
             });
             if (videoRef.current) {
@@ -330,25 +333,53 @@ const Studio = () => {
 
     return (
         <div>
-            <div className="flex justify-center mt-10">
-                <div className="object-contain shadow-lg rounded">
-                    <video
-                        ref={videoRef}
-                        style={{ display: 'none' }}
-                        autoPlay
-                        muted
-                        playsInline
-                    ></video>
+            <div className="flex justify-center mt-10 relative">
+
+                <div className="sidebar w-1/4 px-8 h-fit">
+
+                    <div className="h-[144px] w-[284px] rounded">
+
+                        <p className=" mb-6 text-xl">Video Inputs</p>
+
+
+                        <video
+                            ref={videoRef}
+                            style={{ display: 'block' }}
+                            autoPlay
+                            muted
+                            playsInline
+                            className='rounded transform scale-x-[-1]'
+                        ></video>
+
+                    </div>
+
+                    <p className="text-center mt-18">Camera</p>
+
+                    <div className="h-[144px] w-[284px] mt-6 bg-black">
+                        <video ref={screenVideoRef} className='rounded' autoPlay muted ></video></div>
+
+                    <p className="text-center mt-4">Screen Share</p>
+
+                </div>
+
+
+                <div className="object-contain w-3/4 rounded flex gap-4 h-fit">
+
                     <canvas
                         ref={canvasRef}
-                        className="w-[630px] h-[355px] object-contain rounded"
+                        className="shadow-[#181818] shadow-xl w-[630px] h-[355px] object-contain rounded ml-10"
                     ></canvas>
-                    <video ref={screenVideoRef} className='hidden'></video>
+
+
+                    <div className={isChatLive ? `live-chat bg-[#202020] w-full mx-8 rounded p-3 h-[430px]` : 'hidden'}>
+                        hi
+                    </div>
+
                 </div>
             </div>
 
-            <div className="bottombar flex justify-center mt-30">
-                <div className="flex items-center gap-9 bg-[#171717] px-8 py-3 rounded-xl text-white">
+            <div className="absolute flex justify-center left-[35%]">
+                <div className="flex items-center gap-9 bg-[#111111] px-8 py-3 rounded-xl text-white">
                     <div
                         className={`cursor-pointer ${!isAudioEnabled ? 'text-red-500' : ''}`}
                         onClick={toggleAudio}
