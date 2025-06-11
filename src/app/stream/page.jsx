@@ -303,11 +303,13 @@ const page = () => {
         }
 
         // Notify backend to stop streaming
-        socket.emit('stop-stream');
+        if (socket) {
+            socket.emit('stop-stream');
+            socket.emit('stream-stopped'); // <-- Explicitly notify server
+        }
         setIsStreaming(false);
 
         window.location.href = '/dashboard';
-
     };
 
 

@@ -22,6 +22,8 @@ io.on('connection', socket => {
         console.log('Stream key received:', streamKey);
     });
 
+
+
     socket.on('start-stream', () => {
         if (!streamKey) {
             console.error('Stream key is missing. Cannot start streaming.');
@@ -90,6 +92,16 @@ io.on('connection', socket => {
             ffmpeg.kill();
             ffmpeg = null;
         }
+    });
+
+    socket.on('stream-stopped', () => {
+        console.log('Stream stopped by client:', socket.id);
+        if (ffmpeg) {
+            ffmpeg.stdin.end();
+            ffmpeg.kill();
+            ffmpeg = null;
+        }
+        streamKey = null;
     });
 
     socket.on('disconnect', () => {
