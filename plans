@@ -1,0 +1,6 @@
+npm install react-konva konva
+
+Konva is a canvas abstraction library ideal for draggable/resizable items.
+
+fly.io - docker spin up
+

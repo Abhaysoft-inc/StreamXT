@@ -1,4 +1,5 @@
 'use client'
+import { Suspense } from 'react'
 import * as Clerk from '@clerk/elements/common'
 import * as SignUp from '@clerk/elements/sign-up'
 import { Button } from '@/components/ui/button'
@@ -15,7 +16,7 @@ import { Label } from '@/components/ui/label'
 import { Icons } from '@/components/ui/icons'
 import { cn } from '@/lib/utils'
 
-export default function SignUpPage() {
+function SignUpContent() {
     return (
         <div className="grid w-full grow items-center px-4 sm:justify-center mt-30">
             <SignUp.Root>
@@ -242,5 +243,17 @@ export default function SignUpPage() {
                 </Clerk.Loading>
             </SignUp.Root>
         </div>
+    )
+}
+
+export default function SignUpPage() {
+    return (
+        <Suspense fallback={
+            <div className="flex items-center justify-center h-screen">
+                <Icons.spinner className="size-6 animate-spin" />
+            </div>
+        }>
+            <SignUpContent />
+        </Suspense>
     )
 }

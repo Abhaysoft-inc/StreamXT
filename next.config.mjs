@@ -1,10 +1,15 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-    // experimental: {
-    //     serverActions: true,
-    // }
-
     allowedDevOrigins: ['local-origin.dev', '*.local-origin.dev'],
+
+
+
+    turbopack: {
+        resolveAlias: {
+            canvas: './empty.js'
+        }
+    }
+
 };
 
 export default nextConfig;

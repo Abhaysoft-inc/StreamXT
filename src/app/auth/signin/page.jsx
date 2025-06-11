@@ -1,6 +1,7 @@
 'use client'
 import * as Clerk from '@clerk/elements/common'
 import * as SignIn from '@clerk/elements/sign-in'
+import { Suspense } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -14,7 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Icons } from '@/components/ui/icons'
 
-export default function SignInPage() {
+function SignInContent() {
   return (
     <div className="grid w-full grow items-center px-4 sm:justify-center mt-30">
       <SignIn.Root>
@@ -277,5 +278,13 @@ export default function SignInPage() {
         </Clerk.Loading>
       </SignIn.Root>
     </div>
+  )
+}
+
+export default function SignInPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <SignInContent />
+    </Suspense>
   )
 }
