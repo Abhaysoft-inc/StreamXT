@@ -15,11 +15,11 @@ const StreamYTpage = () => {
 
 
             {/* stream key setup */}
-            <div className="hidden">
-                <StreamKeyForm />
-            </div>
 
-            <Studio />
+            <StreamKeyForm />
+
+
+            {/* <Studio /> */}
 
 
 

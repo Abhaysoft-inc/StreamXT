@@ -1,26 +1,30 @@
-import React from 'react'
+import React from 'react';
 import Link from 'next/link';
-import { Dot } from 'lucide-react'
+import { Dot } from 'lucide-react';
 import { Figtree } from 'next/font/google';
 const figtree = Figtree({
     subsets: ["latin"]
 });
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
-const Navbar = () => {
+const Navbar = ({ isStreaming, onStartStreaming, onStopStreaming }) => {
+    const handleGoLiveClick = () => {
+        if (isStreaming) {
+            onStopStreaming();
+        } else {
+            onStartStreaming();
+        }
+    };
+
     return (
         <div className="navbar">
             <div className={`${figtree.className} px-10 py-2 items-center bg-transparent `}>
-
                 <div className="flex justify-between items-center">
-                    <Link className="brand text-2xl cursor-pointer" href={'/'}>StreamXT</Link>
+                    <a className="brand text-2xl cursor-pointer" href={'/'}>StreamXT</a>
 
                     <ul className="nav-menu flex gap-6 items-center">
-
-                        <div className="flex items-center gap-2" >
-
-
-                            <div className="*:data-[slot=avatar]:ring-background flex -space-x-2 *:data-[slot=avatar]:ring-2 *:data-[slot=avatar]:grayscale">
+                        <div className="flex items-center gap-2">
+                            {/* <div className="*:data-[slot=avatar]:ring-background flex -space-x-2 *:data-[slot=avatar]:ring-2 *:data-[slot=avatar]:grayscale">
                                 <Avatar>
                                     <AvatarImage src="https://github.com/shadcn.png" alt="@shadcn" />
                                     <AvatarFallback>CN</AvatarFallback>
@@ -36,24 +40,25 @@ const Navbar = () => {
                                     />
                                     <AvatarFallback>ER</AvatarFallback>
                                 </Avatar>
-                            </div>
+                            </div> */}
 
-                            <div className="bg-[#252525] px-2 rounded-full">
+                            {/* <div className="bg-[#252525] px-2 rounded-full">
                                 <p className="text-sm">365 Viewers</p>
-                            </div>
+                            </div> */}
                         </div>
-                        <button data-ripple-dark="true" className='flex bg-red-500 pr-3 pl-1 py-1 rounded-full font-semibold cursor-pointer'><Dot className='scale-[250%]' /> Go Live</button>
-
-
-
+                        <button
+                            data-ripple-dark="true"
+                            className={`flex ${isStreaming ? 'bg-gray-500' : 'bg-red-500'} pr-3 pl-1 py-1 rounded-full font-semibold cursor-pointer`}
+                            onClick={handleGoLiveClick}
+                        >
+                            <Dot className='scale-[250%]' /> {isStreaming ? 'Stop Live' : 'Go Live'}
+                        </button>
                     </ul>
                 </div>
-
-
             </div>
-            <div className="w-full border-b-[0.5px] opacity-30 bg-white  "></div>
+            <div className="w-full border-b-[0.5px] opacity-30 bg-white"></div>
         </div>
-    )
-}
+    );
+};
 
-export default Navbar
+export default Navbar;

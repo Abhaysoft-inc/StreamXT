@@ -10,36 +10,77 @@ const io = socketIo(server, {
 });
 
 // YouTube RTMP settings
-const YOUTUBE_URL = 'rtmp://localhost/live/';
-const STREAM_KEY = 'af49-pwf7-xcjp-8mgg-ck19'; // Replace with your stream key
+const YOUTUBE_URL = 'rtmp://a.rtmp.youtube.com/live2/';
 
 io.on('connection', socket => {
     console.log('Client connected:', socket.id);
     let ffmpeg = null;
+    let streamKey = null;
+
+    socket.on('set-stream-key', key => {
+        streamKey = key;
+        console.log('Stream key received:', streamKey);
+    });
 
     socket.on('start-stream', () => {
-        // Basic FFmpeg configuration
-        ffmpeg = spawn('ffmpeg', [
-            '-i', 'pipe:0',          // Input from pipe
-            '-c:v', 'libx264',       // Video codec
-            '-preset', 'veryfast',
-            '-tune', 'zerolatency',
-            '-f', 'flv',            // Output format
-            // `${YOUTUBE_URL}${STREAM_KEY}`
-            `${YOUTUBE_URL}`
-        ]);
+        if (!streamKey) {
+            console.error('Stream key is missing. Cannot start streaming.');
+            return;
+        }
 
-        // Log FFmpeg output for debugging
-        ffmpeg.stderr.on('data', data => {
-            console.log('FFmpeg:', data.toString());
-        });
+        // Function to start ffmpeg process
+        const startFfmpeg = () => {
+            ffmpeg = spawn('ffmpeg', [
+                '-i', 'pipe:0',
+                '-c:v', 'libx264',
+                '-preset', 'veryfast',
+                '-tune', 'zerolatency',
+                '-c:a', 'aac',
+                '-b:a', '128k',
+                '-pix_fmt', 'yuv420p',
+                '-f', 'flv',
+                `${YOUTUBE_URL}${streamKey}`
+            ]);
+
+            ffmpeg.stderr.on('data', data => {
+                console.log('FFmpeg:', data.toString());
+            });
+
+            ffmpeg.on('error', error => {
+                console.error('FFmpeg process error:', error);
+                socket.emit('ffmpeg-error', `FFmpeg error: ${error.message}`);
+                restartFfmpeg();
+            });
+
+            ffmpeg.on('exit', (code, signal) => {
+                if (code !== 0) {
+                    const msg = `FFmpeg exited with code ${code} and signal ${signal}`;
+                    console.error(msg);
+                    socket.emit('ffmpeg-error', msg);
+                    restartFfmpeg();
+                }
+            });
+        };
+
+        // Function to restart ffmpeg
+        const restartFfmpeg = () => {
+            if (ffmpeg) {
+                ffmpeg.stdin.end();
+                ffmpeg.kill();
+                ffmpeg = null;
+            }
+            // Restart ffmpeg after short delay
+            setTimeout(() => {
+                startFfmpeg();
+            }, 1000);
+        };
+
+        startFfmpeg();
     });
 
     socket.on('stream-data', chunk => {
-
         if (ffmpeg && ffmpeg.stdin.writable) {
             ffmpeg.stdin.write(Buffer.from(chunk));
-
         }
     });
 

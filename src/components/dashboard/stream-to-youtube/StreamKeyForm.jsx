@@ -13,8 +13,8 @@ import {
 } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import {
-    cn
-} from "@/lib/utils"
+    useRouter
+} from "next/navigation" // Import useRouter
 import {
     Button
 } from "@/components/ui/button"
@@ -30,7 +30,12 @@ import {
 import {
     Input
 } from "@/components/ui/input"
-import { Card, CardHeader, CardDescription, CardTitle } from "@/components/ui/card"
+import {
+    Card,
+    CardHeader,
+    CardDescription,
+    CardTitle
+} from "@/components/ui/card"
 
 const formSchema = z.object({
     YTStreamKey: z.string().min(1, {
@@ -39,6 +44,8 @@ const formSchema = z.object({
 });
 
 export default function StreamKeyForm() {
+    const router = useRouter(); // Initialize the router
+
     const form = useForm({
         resolver: zodResolver(formSchema),
         defaultValues: {
@@ -46,7 +53,7 @@ export default function StreamKeyForm() {
         }
     });
 
-    function onSubmit(values) {
+    async function onSubmit(values) {
         try {
             console.log(values);
             toast(
@@ -54,6 +61,12 @@ export default function StreamKeyForm() {
                     <code className="text-white">{JSON.stringify(values, null, 2)}</code>
                 </pre>
             );
+
+            // Store the stream key in session storage
+            await sessionStorage.setItem("YTStreamKey", values.YTStreamKey);
+
+            // Redirect to /stream
+            router.push("/stream");
         } catch (error) {
             console.error("Form submission error", error);
             toast.error("Failed to submit the form. Please try again.");
