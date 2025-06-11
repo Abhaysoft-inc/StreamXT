@@ -2,6 +2,7 @@ import Mainbar from '@/components/dashboard/Mainbar'
 import Navbar from '@/components/dashboard/Navbar'
 import Sidebar from '@/components/dashboard/Sidebar'
 import React from 'react'
+import { ToastContainer } from 'react-toastify'
 
 const Dashboard = () => {
 
@@ -20,7 +21,7 @@ const Dashboard = () => {
 
         </div>
       </div>
-
+      <ToastContainer />
     </>
   )
 }

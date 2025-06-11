@@ -75,7 +75,14 @@
       transform: rotate(-5deg) scale(0.9);
     }
   }
-}
+
+  --animate-orbit: orbit calc(var(--duration)*1s) linear infinite
+;
+  @keyframes orbit {
+  0% {
+    transform: rotate(calc(var(--angle) * 1deg)) translateY(calc(var(--radius) * 1px)) rotate(calc(var(--angle) * -1deg));}
+  100% {
+    transform: rotate(calc(var(--angle) * 1deg + 360deg)) translateY(calc(var(--radius) * 1px)) rotate(calc((var(--angle) * -1deg) - 360deg));}}}
 
 :root {
   --background: oklch(1.0000 0 0);
@@ -286,7 +293,6 @@
     @apply bg-background text-foreground;
   }
 }
-
 
 #dot {
   opacity: 50%;

@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { IconBrandYoutube } from '@tabler/icons-react';
 import { Camera, Youtube } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { toast, ToastContainer } from 'react-toastify';
 const figtree = Figtree({
     subsets: ['latin']
 });
@@ -16,8 +17,12 @@ const Mainbar = () => {
     const navToYTStream = () => {
         nav.push('/dashboard/stream-to-youtube')
     }
-    const navToRecord = () => {
-        nav.push('/record')
+    const navToRecord = async () => {
+        // nav.push('/record');
+        await toast('Recording is currently unavailable', {
+            theme: 'dark'
+        })
+
     }
 
     return (
@@ -41,6 +46,7 @@ const Mainbar = () => {
             <div className="mt-16">
                 <p className="text-2xl">Recent recordings</p>
             </div>
+
         </div>
     )
 }
