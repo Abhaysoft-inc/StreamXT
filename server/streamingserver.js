@@ -2,12 +2,14 @@ const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const { spawn } = require('child_process');
-
+const cors = require("cors");
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
-    cors: { origin: "http://localhost:3000" }
+    cors: { origin: "*" }
 });
+
+streamKey = process.env.STREAM_KEY;
 
 // YouTube RTMP settings
 const YOUTUBE_URL = 'rtmp://a.rtmp.youtube.com/live2/';
@@ -15,7 +17,7 @@ const YOUTUBE_URL = 'rtmp://a.rtmp.youtube.com/live2/';
 io.on('connection', socket => {
     console.log('Client connected:', socket.id);
     let ffmpeg = null;
-    let streamKey = null;
+    
 
     socket.on('set-stream-key', key => {
         streamKey = key;
