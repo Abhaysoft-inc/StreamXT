@@ -317,7 +317,7 @@ const page = () => {
 
     useEffect(() => {
         // Initialize WebSocket connection
-        const newSocket = io('http://localhost:3001'); // 
+        const newSocket = io('http://34.29.70.14:3001:3001'); // 
         setSocket(newSocket);
 
         // Send stream key to the backend after connection
