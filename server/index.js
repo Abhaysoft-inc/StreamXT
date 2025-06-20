@@ -26,35 +26,38 @@ io.on('connection', (socket) => {
     let ffmpeg = null;
     let streamStarted = false;
     let bufferQueue = [];
+    let streamKey = null;
 
-    // Receive data chunks
+    // ✅ Listen for the stream key first
+    socket.on('set-stream-key', (key) => {
+        streamKey = key;
+        console.log(`Received stream key from frontend: ${streamKey}`);
+    });
+
+    // 🚀 Handle video stream data from frontend
     socket.on('stream-data', (chunk) => {
         const data = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
 
-        // ✅ Start ffmpeg only when first chunk arrives
-        if (!streamStarted) {
+        // Only start ffmpeg if streamKey is set
+        if (!streamStarted && streamKey) {
             streamStarted = true;
-            console.log("Starting FFmpeg now...");
+            console.log('Starting FFmpeg with streamKey...');
 
             ffmpeg = spawn('ffmpeg', [
                 '-f', 'webm',
                 '-i', 'pipe:0',
-
-                '-c:v', 'libx264', // rtmp
+                '-c:v', 'libx264',
                 '-crf', '18',
-
                 '-preset', 'veryfast',
                 '-tune', 'zerolatency',
-
                 '-g', '50',
-                '-c:a', 'aac', // rtmp ko aac chahiye
+                '-c:a', 'aac',
                 '-b:a', '128k',
-                '-ac', '2', // stereo
+                '-ac', '2',
                 '-ar', '48000',
-                '-vf', 'scale=1280:720', // forcing 
-
+                '-vf', 'scale=1280:720',
                 '-f', 'flv',
-                'rtmp://localhost/live'
+                `rtmp://a.rtmp.youtube.com/live2/${streamKey}`
             ]);
 
             ffmpeg.stderr.on('data', (data) => {
@@ -69,7 +72,7 @@ io.on('connection', (socket) => {
                 console.error('FFmpeg STDIN error:', err);
             });
 
-            // 🧠 Flush buffered chunks
+            // Flush buffered data
             for (const chunk of bufferQueue) {
                 ffmpeg.stdin.write(chunk);
             }
@@ -79,11 +82,11 @@ io.on('connection', (socket) => {
         if (ffmpeg) {
             ffmpeg.stdin.write(data);
         } else {
-            // 🔄 Buffer it temporarily until FFmpeg starts
             bufferQueue.push(data);
         }
     });
 
+    // Handle disconnect
     socket.on('disconnect', () => {
         console.log('Client disconnected:', socket.id);
         if (ffmpeg) {
@@ -92,6 +95,7 @@ io.on('connection', (socket) => {
         }
     });
 });
+
 
 
 server.listen(3001)
