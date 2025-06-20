@@ -15,7 +15,7 @@ const Mainbar = () => {
 
     const nav = useRouter();
     const navToYTStream = () => {
-        nav.push('/dashboard/stream-to-youtube')
+        nav.push('/stream-to-youtube')
     }
     const navToRecord = async () => {
         // nav.push('/record');
