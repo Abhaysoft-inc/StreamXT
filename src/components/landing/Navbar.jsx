@@ -16,7 +16,7 @@ const Navbar = () => {
             <div className={`${figtree.className} px-10 py-5 items-center bg-transparent `}>
 
                 <div className="flex justify-between items-center">
-                    <p className="brand text-2xl">StreamXT</p>
+                    <p className="brand text-2xl font-bold flex items-center">Stream<span className='text-orange-400 text-3xl'>X</span><span className='text-orange-400 text-3xl'>T</span></p>
 
                     <ul className="nav-menu flex gap-6 items-center">
                         <li className="nav-items text-md">Home</li>

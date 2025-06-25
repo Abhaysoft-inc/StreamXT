@@ -415,7 +415,7 @@ const page = () => {
             });
 
             // router.push('/dashboard/stream-to-youtube');
-            window.location.href = '/stream-to-youtube'
+            window.location.href = '/dashboard'
             // handleNavigation();
 
 
