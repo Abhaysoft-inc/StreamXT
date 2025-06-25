@@ -5,17 +5,20 @@ import { cn } from "@/lib/utils";
 import { TextAnimate } from "@/components/magicui/text-animate";
 import { Figtree } from 'next/font/google'
 import { Button } from "@/components/ui/button"
-import { IconBrandGithub } from "@tabler/icons-react"
-import HeroVideoDialog from "@/components/magicui/hero-video-dialog";
-
+import { IconArrowRight, IconArrowRightBar, IconArrowRightFromArc, IconBrandGithub } from "@tabler/icons-react"
+import { FaYoutube, FaTwitch, FaVimeoV, FaDailymotion } from "react-icons/fa";
+import { FaXTwitter } from "react-icons/fa6";
+import { Safari } from "@/components/magicui/safari";
+import Notif, { notif } from '@/components/landing/notif'
+import { useRouter } from "next/navigation";
 
 const figtree = Figtree({
   subsets: ['latin']
 });
 
 
-import Notif, { notif } from '@/components/landing/notif'
-import { useRouter } from "next/navigation";
+
+
 
 export default function Home() {
   const router = useRouter();
@@ -33,7 +36,7 @@ export default function Home() {
     <>
       <Navbar />
       <div className={`${figtree.className} mb-10`}>
-        <div className="relative h-[500px] w-full overflow-hidden mt-4">
+        <div className="relative h-[590px] w-full overflow-hidden mt-2">
           <DotPattern width={10} glow={true} cr={0.8} className={cn(
             "[mask-image:radial-gradient(500px_circle_at_center,white,transparent)]",
           )} id="dot" />
@@ -56,6 +59,18 @@ export default function Home() {
               <Button className={`  font-semibold cursor-pointer`} variant={"outline"} onClick={githubroute}> <IconBrandGithub /> Contribute to StreamXT</Button>
               <Button className={` font-semibold cursor-pointer`} onClick={navToLogin} >Try Streaming Now!</Button>
 
+            </div>
+
+            <p className="text-center mt-10 flex justify-center gap-2 items-center">
+              Stream to multiple streaming platform with just one click <b className="flex gap-1 items-center cursor-pointer ">View all <IconArrowRight size={20} /> </b>
+            </p>
+
+            <div className="  mt-10 flex justify-center gap-10">
+              <FaYoutube size={45} className="opacity-50 hover:opacity-90" />
+              <FaTwitch size={45} className="opacity-50 hover:opacity-90" />
+              <FaVimeoV size={45} className="opacity-50 hover:opacity-90" />
+              <FaDailymotion size={45} className="opacity-50 hover:opacity-90" />
+              <FaXTwitter size={45} className="opacity-50 hover:opacity-90" />
             </div>
 
 
@@ -88,6 +103,34 @@ export default function Home() {
           </div>
 
         </div> */}
+
+        <div className="mt-25 mb-30">
+
+          <p className="text-center text-4xl px-30 font-bold">
+            "Stream from <span className="text-orange-400">anywhere</span>, <span className="text-blue-400">anytime</span> with any device"
+          </p>
+
+
+          <div className="mt-20 flex">
+            <div className="left w-1/2 mx-10">
+              <Safari url="streamxt.live" className="size-full" imageSrc={"/screen.png"} />
+
+
+            </div>
+
+            <div className="right w-1/2 px-10 font-semibold">
+              <p className="text-2xl">Go live on multiple streaming platform in <br /> <span className="text-orange-500">one click!</span> </p>
+
+              <p className="mt-6 font-xl font-normal">
+                Stop juggling between tabs and tools—broadcast your content to YouTube, Facebook, Twitch, LinkedIn, and more simultaneously with just one click. <br /><br /> Whether you're a gamer, creator, brand, or educator, our powerful multistreaming tool makes it easy to expand your reach, grow your audience, and save time. No complex setup, no extra hardware—just pure simplicity and performance.
+              </p>
+              <Button className={"mt-10 font-xl font-semibold cursor-pointer"} variant={""}>Go Live!</Button>
+
+            </div>
+
+          </div>
+
+        </div>
 
       </div>
 
