@@ -317,7 +317,7 @@ const page = () => {
 
     useEffect(() => {
         // Initialize WebSocket connection
-        const newSocket = io('http://34.30.8.109:3001'); // 
+        const newSocket = io('https://localhost:3001'); // 
         setSocket(newSocket);
 
         // Send stream key to the backend after connection
@@ -469,7 +469,7 @@ const page = () => {
                 {/* Main View */}
                 <div className="viewbar w-[900px] ml-8 mt-2">
                     <div className="flex justify-center">
-                        <div className="canvas bg-white rounded-2xl w-[755px]">
+                        <div className="canvas rounded-2xl w-[755px]">
                             <canvas className="rounded-2xl w-full h-auto" ref={canvasRef}></canvas>
 
                             <video ref={screenVideoRef} className="hidden" autoPlay muted playsInline></video>

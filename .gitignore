@@ -43,3 +43,5 @@ next-env.d.ts
 /server/node_modules
 # clerk configuration (can include secrets)
 /.clerk/
+
+/server/certs

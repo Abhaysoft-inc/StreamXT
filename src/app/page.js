@@ -1,16 +1,26 @@
 "use client"
 import Navbar from "@/components/landing/Navbar";
-import { DotPattern } from '@/components/magicui/dot-pattern';
+// import { DotPattern } from '@/components/magicui/dot-pattern';
 import { cn } from "@/lib/utils";
 import { TextAnimate } from "@/components/magicui/text-animate";
 import { Figtree } from 'next/font/google'
 import { Button } from "@/components/ui/button"
-import { IconArrowRight, IconArrowRightBar, IconArrowRightFromArc, IconBrandGithub } from "@tabler/icons-react"
+import { IconArrowRight, IconBrandGithub } from "@tabler/icons-react"
 import { FaYoutube, FaTwitch, FaVimeoV, FaDailymotion } from "react-icons/fa";
 import { FaXTwitter } from "react-icons/fa6";
 import { Safari } from "@/components/magicui/safari";
 import Notif, { notif } from '@/components/landing/notif'
-import { useRouter } from "next/navigation";
+import dynamic from 'next/dynamic'
+import { Suspense } from 'react'
+
+const DotPattern = dynamic(
+  () => import("@/components/magicui/dot-pattern").then((mod) => ({ default: mod.DotPattern })),
+  {
+    ssr: false,
+    loading: () => <div className="absolute inset-0" />
+  }
+);
+
 
 const figtree = Figtree({
   subsets: ['latin']
@@ -21,10 +31,11 @@ const figtree = Figtree({
 
 
 export default function Home() {
-  const router = useRouter();
+  // const router = useRouter();
 
   const navToLogin = () => {
-    router.push('/auth/signin');
+    // router.push('/auth/signin');
+    window.location.href = "/auth/signin"
   }
 
   const githubroute = () => {
@@ -36,14 +47,16 @@ export default function Home() {
     <>
       <Navbar />
       <div className={`${figtree.className} mb-10`}>
-        <div className="relative h-[590px] w-full overflow-hidden mt-2">
-          <DotPattern width={10} glow={true} cr={0.8} className={cn(
-            "[mask-image:radial-gradient(500px_circle_at_center,white,transparent)]",
-          )} id="dot" />
+        <div className="relative h-[590px] w-full overflow-hidden mt-0">
+          <Suspense fallback={<div className="absolute inset-0" />}>
+            <DotPattern width={25} glow={true} cr={0.8} className={cn(
+              "[mask-image:radial-gradient(500px_circle_at_center,white,transparent)]",
+            )} id="dot" />
+          </Suspense>
 
           <div className="">
 
-            <div className="flex justify-center pt-20">
+            <div className="flex justify-center pt-15">
               <div className="w-44 flex justify-center">
                 <Notif />
               </div>
@@ -51,7 +64,7 @@ export default function Home() {
             <div className="flex justify-center pt-6">
 
 
-              <TextAnimate animation="blurIn" as="h1" className={`text-7xl text-center wrap px-62 whitespace-pre-line leading-none `}>
+              <TextAnimate animation="slideUp" as="h1" by="word" delay={1} duration={1.5} className={`text-7xl text-center wrap px-62 whitespace-pre-line leading-none `}>
                 {"Lag-free streaming directly from your browser"}
               </TextAnimate>
             </div>

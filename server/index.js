@@ -3,6 +3,13 @@ const dotenv = require('dotenv');
 const http = require('http');
 const { Server } = require('socket.io');
 const { spawn } = require('child_process');
+const fs = require('fs')
+
+
+// const key = fs.readFileSync('./certs/cert.key');
+// const cert = fs.readFileSync('./certs/cert.crt');
+
+
 const app = express()
 const server = http.createServer(app);
 
@@ -98,4 +105,6 @@ io.on('connection', (socket) => {
 
 
 
-server.listen(3001)
+server.listen(3001, () => {
+    console.log("server is running on port 3001")
+})
