@@ -313,6 +313,8 @@ const page = () => {
     };
 
 
+
+
     // streaming
 
     useEffect(() => {
@@ -329,9 +331,93 @@ const page = () => {
             }
         });
 
+
+        const handleAddNewUser = async () => {
+            const configuration = { 'iceServers': [{ 'urls': 'stun:stun.l.google.com:19302' }] }
+            const peerConnection = new RTCPeerConnection(configuration);
+
+            stream.getTracks().forEach(track => {
+                peerConnection.addTrack(track, stream);
+            });
+
+            peerConnection.ontrack = (e) => {
+                console.log(e.streams[0]);
+                remoteVideo.srcObject = e.streams[0];
+            }
+
+            peerConnection.onicecandidate = e => {
+                if (e.candidate) {
+                    newSocket.emit('ice-candidate', e.candidate);
+                }
+            };
+
+            //offer create karo
+
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+            newSocket.emit('offer', offer);
+
+            // ye chize fix karni hai abhi
+
+            //agar offer mile to 
+
+            socket.on('offer', async offer => {
+                const configuration = { 'iceServers': [{ 'urls': 'stun:stun.l.google.com:19302' }] };
+                peerConnection = new RTCPeerConnection(configuration);
+
+                // Add local stream
+                const localStream = await navigator.mediaDevices.getUserMedia({
+                    video: true,
+                    audio: true
+                });
+                localVideo.srcObject = localStream;
+
+                localStream.getTracks().forEach(track => {
+                    peerConnection.addTrack(track, localStream);
+                });
+
+                // Handle remote stream and ICE candidates
+                peerConnection.ontrack = event => {
+                    remoteVideo.srcObject = event.streams[0];
+                };
+
+                peerConnection.onicecandidate = event => {
+                    if (event.candidate) {
+                        socket.emit('ice-candidate', event.candidate);
+                    }
+                };
+
+                // Set remote description and create answer
+                await peerConnection.setRemoteDescription(offer);
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+                socket.emit('answer', answer);
+            });
+
+
+
+
+            socket.on('answer', async (answer) => {
+                await peerConnection.setRemoteDescription(answer);
+            });
+
+            socket.on('ice-candidate', async (candidate) => {
+                await peerConnection.addIceCandidate(candidate);
+            });
+
+
+
+
+
+
+
+        }
+
         return () => {
             if (newSocket) newSocket.disconnect();
         };
+
+
     }, [streamKey]);
 
     // Initialize on component mount
@@ -447,7 +533,7 @@ const page = () => {
                 <div className="sidebar w-[250px] px-3 py-2">
                     <div className="flex justify-between items-center">
                         <p className={`${figtree.className} text-lg`}>Backstage</p>
-                        <Button variant={'outline'} className={'rounded-full bg-transparent h-10'} onClick={showAddedSoonToast}>
+                        <Button variant={'outline'} className={'rounded-full bg-transparent h-10'} onClick={handleAddNewUser}>
                             <UserPlus />
                         </Button>
                     </div>
