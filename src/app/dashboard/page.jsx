@@ -1,3 +1,4 @@
+"use client"
 import Mainbar from '@/components/dashboard/Mainbar'
 import Navbar from '@/components/dashboard/Navbar'
 import Sidebar from '@/components/dashboard/Sidebar'
@@ -9,10 +10,10 @@ const Dashboard = () => {
 
   return (
     <>
-      <Navbar />
+      {/* <Navbar /> */}
 
-      <div className="main-screen flex h-[573px]">
-        <div className="sidebar w-1/5  border-r-[0.5px] border-gray-500 border-opacity-5 ">
+      <div className="main-screen flex h-[573px] ">
+        <div className="sidebar h-screen w-1/5">
           <Sidebar />
 
         </div>

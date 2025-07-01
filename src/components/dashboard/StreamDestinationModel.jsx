@@ -37,7 +37,7 @@ const StreamDestinationModel = ({ setIsVisible }) => {
 
 
     return (
-        <div className='modal-contaier fixed flex justify-center items-center backdrop-blur-sm '>
+        <div className='z-20 modal-contaier fixed flex justify-center items-center backdrop-blur-sm '>
             <div className="modal w-[600px] h-[400px] relative bg-[#222] rounded left-[40%] top-20 shadow-2xl shadow-white px-4 py-3">
                 <div className="closeBtn float-end" onClick={() => {
                     setIsVisible(false)
