@@ -1,7 +1,7 @@
 import { useCallback } from "react";
+import { toast } from "react-toastify";
 
-
-export default async function useToggleScreenShare({isScreenShareEnabled,screenStream, setScreenStream, setIsScreenShareEnabled,setCurrentLayout, isCameraEnabled, screenVideoRef, animationRef, drawCanvas   }){
+export default function useToggleScreenShare({isScreenShareEnabled,screenStream, setScreenStream, setIsScreenShareEnabled,setCurrentLayout, isCameraEnabled, screenVideoRef, animationRef, drawCanvas   }){
 
     const toggleScreenShare = useCallback(async()=>{
 
@@ -51,5 +51,7 @@ export default async function useToggleScreenShare({isScreenShareEnabled,screenS
                 }
 
     })
+
+    return toggleScreenShare;
 
 }

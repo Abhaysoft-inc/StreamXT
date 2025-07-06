@@ -1,6 +1,9 @@
+import { useCallback } from "react";
+
+export default function useCameraToggle({isCameraEnabled, setIsCameraEnabled, isMicEnabled, videoRef, stream, setStream, animationRef, drawCanvas}) {
+    const toggleCamera = useCallback(async () => {
 
 
-export default async function toggleCamera ({isCameraEnabled, setIsCameraEnabled, isMicEnabled, videoRef, stream, setStream, animationRef, drawCanvas}) {
         try {
             if (isCameraEnabled) {
                 // Stop camera
@@ -34,3 +37,9 @@ export default async function toggleCamera ({isCameraEnabled, setIsCameraEnabled
             alert("Failed to access camera. Please check permissions.");
         }
     }
+
+
+    );
+
+    return toggleCamera;
+}

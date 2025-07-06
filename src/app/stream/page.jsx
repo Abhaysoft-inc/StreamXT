@@ -16,36 +16,31 @@ const figtree = Figtree({
 });
 
 
-// toggle controls
-
 import showAddedSoonToast from '../controllers/showToast'
-// import toggleCamera from '../controllers/stream/toggleCamera'
 
-// hooks
+// Hooks
 
 import useToggleMic from '../hooks/useToggleMic'
 import useToggleScreenShare from '../hooks/useToggleScreenShare'
-import toggleCamera from '../controllers/stream/toggleCamera'
+import useCameraToggle from '../hooks/useCameraToggle'
 
 
 
 const page = () => {
 
+    // References
 
     const canvasRef = useRef(null);
     const videoRef = useRef(null);
     const animationRef = useRef(null);
     const screenVideoRef = useRef(null);
+
+    // State management
+
     const [socket, setSocket] = useState(null);
     const [mediaRecorder, setMediaRecorder] = useState(null);
     const [isStreaming, setIsStreaming] = useState(false);
     const [streamKey, setStreamKey] = useState("");
-
-    // toast
-
-    
-
-    // State management
     const [isCameraEnabled, setIsCameraEnabled] = useState(true); // Default camera ON
     const [isScreenShareEnabled, setIsScreenShareEnabled] = useState(false);
     const [isMicEnabled, setIsMicEnabled] = useState(true);
@@ -53,90 +48,8 @@ const page = () => {
     const [stream, setStream] = useState(null);
     const [screenStream, setScreenStream] = useState(null);
 
-    // Start/Stop Camera
-    // const toggleCamera = async () => {
-    //     try {
-    //         if (isCameraEnabled) {
-    //             // Stop camera
-    //             if (stream) {
-    //                 stream.getTracks().forEach(track => track.stop());
-    //                 setStream(null);
-    //             }
-    //             setIsCameraEnabled(false);
-    //         } else {
-    //             // Start camera
-    //             const newStream = await navigator.mediaDevices.getUserMedia({
-    //                 audio: isMicEnabled,
-    //                 video: { height: 720, width: 1368 }
-    //             });
-
-    //             if (videoRef.current) {
-    //                 videoRef.current.srcObject = newStream;
-    //                 videoRef.current.onloadedmetadata = async () => {
-    //                     await videoRef.current.play();
-    //                     if (!animationRef.current) {
-    //                         drawCanvas();
-    //                     }
-    //                 }
-    //             }
-
-    //             setStream(newStream);
-    //             setIsCameraEnabled(true);
-    //         }
-    //     } catch (error) {
-    //         console.error("Camera Error: ", error);
-    //         alert("Failed to access camera. Please check permissions.");
-    //     }
-    // }
-
-    // Start/Stop Screen Share
-    // const toggleScreenShare = async () => {
-    //     try {
-    //         if (isScreenShareEnabled) {
-    //             // Stop screen share
-    //             if (screenStream) {
-    //                 screenStream.getTracks().forEach(track => track.stop());
-    //                 setScreenStream(null);
-    //             }
-    //             setIsScreenShareEnabled(false);
-    //             setCurrentLayout(isCameraEnabled ? 'single' : 'single');
-    //         } else {
-    //             // Start screen share
-    //             const newScreenStream = await navigator.mediaDevices.getDisplayMedia({
-    //                 video: { width: 1368, height: 720 },
-    //                 audio: true
-    //             });
-
-    //             if (screenVideoRef.current) {
-    //                 screenVideoRef.current.srcObject = newScreenStream;
-    //                 screenVideoRef.current.onloadedmetadata = async () => {
-    //                     await screenVideoRef.current.play();
-    //                     if (!animationRef.current) {
-    //                         drawCanvas();
-    //                     }
-    //                 }
-    //             }
-
-    //             // Handle screen share end event
-    //             newScreenStream.getVideoTracks()[0].addEventListener('ended', () => {
-    //                 setIsScreenShareEnabled(false);
-    //                 setScreenStream(null);
-    //                 setCurrentLayout(isCameraEnabled ? 'single' : 'single');
-    //             });
-
-    //             setScreenStream(newScreenStream);
-    //             setIsScreenShareEnabled(true);
-    //             setCurrentLayout('screen');
-    //         }
-    //     } catch (error) {
-    //         console.error("Screen Share Error: ", error);
-    //         toast('Failed to share screen', {
-    //             theme: 'dark'
-    //         })
-    //         setCurrentLayout('single')
-    //     }
-    // }
-
+    
+    // Canvas Init
     const drawCanvas = () => {
         const canvas = canvasRef.current;
         const camVideo = videoRef.current;
@@ -202,12 +115,17 @@ const page = () => {
         animationRef.current = requestAnimationFrame(drawCanvas);
     }
 
-    // toogle screen share
+
+    // Toggle Camera
+    const toggleCamera = useCameraToggle({isCameraEnabled, setIsCameraEnabled, isMicEnabled, videoRef, stream, setStream, animationRef, drawCanvas});
+
+
+
+    // Toggle Screen Share
     const toggleScreenShare = useToggleScreenShare({isScreenShareEnabled,screenStream, setScreenStream, setIsScreenShareEnabled,setCurrentLayout, isCameraEnabled, screenVideoRef, animationRef, drawCanvas })
 
 
     // Toggle Microphone
-
     const toggleMic = useToggleMic({ stream, setIsMicEnabled });
 
     // Layout selection handlers
@@ -219,9 +137,6 @@ const page = () => {
             await toggleScreenShare();
         }
     }
-
-    // Canvas drawing function
-    
 
     // Initialize camera on component mount
     const initializeCamera = async () => {
@@ -247,7 +162,6 @@ const page = () => {
     };
 
     // Start streaming 
-
     const startStreaming = () => {
         const canvas = canvasRef.current;
         if (!canvas) return;
@@ -295,7 +209,6 @@ const page = () => {
     };
 
     // Stop streaming
-
     const stopStreaming = () => {
         if (mediaRecorder) {
             mediaRecorder.stop();
@@ -316,7 +229,6 @@ const page = () => {
 
 
     // streaming
-
     useEffect(() => {
         // Initialize WebSocket connection
         const newSocket = io('https://localhost:3001'); // 
@@ -534,7 +446,7 @@ const page = () => {
                             <Button
                                 className={`rounded-[100%] h-10 ${!isCameraEnabled ? 'bg-red-500 hover:bg-red-600' : ''}`}
                                 variant={'outline'}
-                                onClick={() => toggleCamera({isCameraEnabled, setIsCameraEnabled, isMicEnabled, videoRef, stream, setStream, animationRef, drawCanvas})}
+                                onClick={toggleCamera}
                             >
                                 {isCameraEnabled ? <Video /> : <VideoOff />}
                             </Button>
