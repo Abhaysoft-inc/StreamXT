@@ -15,7 +15,21 @@ const figtree = Figtree({
     subsets: ["latin"]
 });
 
+
+// toggle controls
+
+import showAddedSoonToast from '../controllers/showToast'
+import toggleCamera from '../controllers/stream/toggleCamera'
+
+// hooks
+
+import useToggleMic from '../hooks/useToggleMic'
+
+
+
 const page = () => {
+
+
     const canvasRef = useRef(null);
     const videoRef = useRef(null);
     const animationRef = useRef(null);
@@ -27,20 +41,7 @@ const page = () => {
 
     // toast
 
-    const showAddedSoonToast = async () => {
-        await toast('We are woking on this feature', {
-            position: "top-right",
-            autoClose: 5000,
-            hideProgressBar: false,
-            closeOnClick: false,
-            pauseOnHover: true,
-            draggable: true,
-            progress: undefined,
-            theme: "dark",
-            transition: Bounce,
-        });
-
-    }
+    
 
     // State management
     const [isCameraEnabled, setIsCameraEnabled] = useState(true); // Default camera ON
@@ -51,40 +52,40 @@ const page = () => {
     const [screenStream, setScreenStream] = useState(null);
 
     // Start/Stop Camera
-    const toggleCamera = async () => {
-        try {
-            if (isCameraEnabled) {
-                // Stop camera
-                if (stream) {
-                    stream.getTracks().forEach(track => track.stop());
-                    setStream(null);
-                }
-                setIsCameraEnabled(false);
-            } else {
-                // Start camera
-                const newStream = await navigator.mediaDevices.getUserMedia({
-                    audio: isMicEnabled,
-                    video: { height: 720, width: 1368 }
-                });
+    // const toggleCamera = async () => {
+    //     try {
+    //         if (isCameraEnabled) {
+    //             // Stop camera
+    //             if (stream) {
+    //                 stream.getTracks().forEach(track => track.stop());
+    //                 setStream(null);
+    //             }
+    //             setIsCameraEnabled(false);
+    //         } else {
+    //             // Start camera
+    //             const newStream = await navigator.mediaDevices.getUserMedia({
+    //                 audio: isMicEnabled,
+    //                 video: { height: 720, width: 1368 }
+    //             });
 
-                if (videoRef.current) {
-                    videoRef.current.srcObject = newStream;
-                    videoRef.current.onloadedmetadata = async () => {
-                        await videoRef.current.play();
-                        if (!animationRef.current) {
-                            drawCanvas();
-                        }
-                    }
-                }
+    //             if (videoRef.current) {
+    //                 videoRef.current.srcObject = newStream;
+    //                 videoRef.current.onloadedmetadata = async () => {
+    //                     await videoRef.current.play();
+    //                     if (!animationRef.current) {
+    //                         drawCanvas();
+    //                     }
+    //                 }
+    //             }
 
-                setStream(newStream);
-                setIsCameraEnabled(true);
-            }
-        } catch (error) {
-            console.error("Camera Error: ", error);
-            alert("Failed to access camera. Please check permissions.");
-        }
-    }
+    //             setStream(newStream);
+    //             setIsCameraEnabled(true);
+    //         }
+    //     } catch (error) {
+    //         console.error("Camera Error: ", error);
+    //         alert("Failed to access camera. Please check permissions.");
+    //     }
+    // }
 
     // Start/Stop Screen Share
     const toggleScreenShare = async () => {
@@ -135,17 +136,8 @@ const page = () => {
     }
 
     // Toggle Microphone
-    const toggleMic = () => {
-        if (stream) {
-            const audioTrack = stream.getAudioTracks()[0];
-            if (audioTrack) {
-                audioTrack.enabled = !isMicEnabled;
-                setIsMicEnabled(!isMicEnabled);
-            }
-        } else {
-            setIsMicEnabled(!isMicEnabled);
-        }
-    }
+
+    const toggleMic = useToggleMic({ stream, setIsMicEnabled });
 
     // Layout selection handlers
     const selectLayout = async (layout) => {
@@ -534,7 +526,7 @@ const page = () => {
                             <Button
                                 className={`rounded-[100%] h-10 ${!isCameraEnabled ? 'bg-red-500 hover:bg-red-600' : ''}`}
                                 variant={'outline'}
-                                onClick={toggleCamera}
+                                onClick={() => toggleCamera({isCameraEnabled, setIsCameraEnabled, isMicEnabled, videoRef, stream, setStream, animationRef, drawCanvas})}
                             >
                                 {isCameraEnabled ? <Video /> : <VideoOff />}
                             </Button>
