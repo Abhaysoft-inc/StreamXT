@@ -19,11 +19,13 @@ const figtree = Figtree({
 // toggle controls
 
 import showAddedSoonToast from '../controllers/showToast'
-import toggleCamera from '../controllers/stream/toggleCamera'
+// import toggleCamera from '../controllers/stream/toggleCamera'
 
 // hooks
 
 import useToggleMic from '../hooks/useToggleMic'
+import useToggleScreenShare from '../hooks/useToggleScreenShare'
+import toggleCamera from '../controllers/stream/toggleCamera'
 
 
 
@@ -88,68 +90,53 @@ const page = () => {
     // }
 
     // Start/Stop Screen Share
-    const toggleScreenShare = async () => {
-        try {
-            if (isScreenShareEnabled) {
-                // Stop screen share
-                if (screenStream) {
-                    screenStream.getTracks().forEach(track => track.stop());
-                    setScreenStream(null);
-                }
-                setIsScreenShareEnabled(false);
-                setCurrentLayout(isCameraEnabled ? 'single' : 'single');
-            } else {
-                // Start screen share
-                const newScreenStream = await navigator.mediaDevices.getDisplayMedia({
-                    video: { width: 1368, height: 720 },
-                    audio: true
-                });
+    // const toggleScreenShare = async () => {
+    //     try {
+    //         if (isScreenShareEnabled) {
+    //             // Stop screen share
+    //             if (screenStream) {
+    //                 screenStream.getTracks().forEach(track => track.stop());
+    //                 setScreenStream(null);
+    //             }
+    //             setIsScreenShareEnabled(false);
+    //             setCurrentLayout(isCameraEnabled ? 'single' : 'single');
+    //         } else {
+    //             // Start screen share
+    //             const newScreenStream = await navigator.mediaDevices.getDisplayMedia({
+    //                 video: { width: 1368, height: 720 },
+    //                 audio: true
+    //             });
 
-                if (screenVideoRef.current) {
-                    screenVideoRef.current.srcObject = newScreenStream;
-                    screenVideoRef.current.onloadedmetadata = async () => {
-                        await screenVideoRef.current.play();
-                        if (!animationRef.current) {
-                            drawCanvas();
-                        }
-                    }
-                }
+    //             if (screenVideoRef.current) {
+    //                 screenVideoRef.current.srcObject = newScreenStream;
+    //                 screenVideoRef.current.onloadedmetadata = async () => {
+    //                     await screenVideoRef.current.play();
+    //                     if (!animationRef.current) {
+    //                         drawCanvas();
+    //                     }
+    //                 }
+    //             }
 
-                // Handle screen share end event
-                newScreenStream.getVideoTracks()[0].addEventListener('ended', () => {
-                    setIsScreenShareEnabled(false);
-                    setScreenStream(null);
-                    setCurrentLayout(isCameraEnabled ? 'single' : 'single');
-                });
+    //             // Handle screen share end event
+    //             newScreenStream.getVideoTracks()[0].addEventListener('ended', () => {
+    //                 setIsScreenShareEnabled(false);
+    //                 setScreenStream(null);
+    //                 setCurrentLayout(isCameraEnabled ? 'single' : 'single');
+    //             });
 
-                setScreenStream(newScreenStream);
-                setIsScreenShareEnabled(true);
-                setCurrentLayout('screen');
-            }
-        } catch (error) {
-            console.error("Screen Share Error: ", error);
-            toast('Failed to share screen', {
-                theme: 'dark'
-            })
-            setCurrentLayout('single')
-        }
-    }
+    //             setScreenStream(newScreenStream);
+    //             setIsScreenShareEnabled(true);
+    //             setCurrentLayout('screen');
+    //         }
+    //     } catch (error) {
+    //         console.error("Screen Share Error: ", error);
+    //         toast('Failed to share screen', {
+    //             theme: 'dark'
+    //         })
+    //         setCurrentLayout('single')
+    //     }
+    // }
 
-    // Toggle Microphone
-
-    const toggleMic = useToggleMic({ stream, setIsMicEnabled });
-
-    // Layout selection handlers
-    const selectLayout = async (layout) => {
-        setCurrentLayout(layout);
-
-        // Auto-enable screen share when switching to screen layout
-        if (layout === 'screen' && !isScreenShareEnabled) {
-            await toggleScreenShare();
-        }
-    }
-
-    // Canvas drawing function
     const drawCanvas = () => {
         const canvas = canvasRef.current;
         const camVideo = videoRef.current;
@@ -214,6 +201,27 @@ const page = () => {
 
         animationRef.current = requestAnimationFrame(drawCanvas);
     }
+
+    // toogle screen share
+    const toggleScreenShare = useToggleScreenShare({isScreenShareEnabled,screenStream, setScreenStream, setIsScreenShareEnabled,setCurrentLayout, isCameraEnabled, screenVideoRef, animationRef, drawCanvas })
+
+
+    // Toggle Microphone
+
+    const toggleMic = useToggleMic({ stream, setIsMicEnabled });
+
+    // Layout selection handlers
+    const selectLayout = async (layout) => {
+        setCurrentLayout(layout);
+
+        // Auto-enable screen share when switching to screen layout
+        if (layout === 'screen' && !isScreenShareEnabled) {
+            await toggleScreenShare();
+        }
+    }
+
+    // Canvas drawing function
+    
 
     // Initialize camera on component mount
     const initializeCamera = async () => {
