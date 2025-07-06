@@ -16,11 +16,15 @@ const Navbar = ({ isStreaming, onStartStreaming, onStopStreaming }) => {
         }
     };
 
+    function sendToHome() {
+        window.location = '/'
+    }
+
     return (
         <div className="navbar">
             <div className={`${figtree.className} px-10 py-2 items-center bg-transparent `}>
                 <div className="flex justify-between items-center">
-                    <a className="brand text-2xl cursor-pointer" href={'/'}>StreamXT</a>
+                    <p className="brand text-2xl font-bold flex items-center ml-4 cursor-pointer" onClick={sendToHome}>Stream<span className='text-orange-400 text-3xl cursor-pointer'>X</span><span className='text-orange-400 text-3xl'>T</span></p>
 
                     <ul className="nav-menu flex gap-6 items-center">
                         <div className="flex items-center gap-2">
