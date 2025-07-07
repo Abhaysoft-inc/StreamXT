@@ -6,7 +6,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { Figtree } from 'next/font/google'
 import Navbar from '@/components/stream/Navbar';
 import io from 'socket.io-client';
-import { ToastContainer, toast, Bounce } from 'react-toastify';
+import { ToastContainer, toast } from 'react-toastify';
 import {
     useRouter
 } from "next/navigation"
@@ -15,14 +15,12 @@ const figtree = Figtree({
     subsets: ["latin"]
 });
 
-
-import showAddedSoonToast from '../controllers/showToast'
-
 // Hooks
 
 import useToggleMic from '../hooks/useToggleMic'
 import useToggleScreenShare from '../hooks/useToggleScreenShare'
 import useCameraToggle from '../hooks/useCameraToggle'
+import Toolbar from '@/components/stream/Toolbar'
 
 
 
@@ -48,7 +46,7 @@ const page = () => {
     const [stream, setStream] = useState(null);
     const [screenStream, setScreenStream] = useState(null);
 
-    
+
     // Canvas Init
     const drawCanvas = () => {
         const canvas = canvasRef.current;
@@ -117,12 +115,12 @@ const page = () => {
 
 
     // Toggle Camera
-    const toggleCamera = useCameraToggle({isCameraEnabled, setIsCameraEnabled, isMicEnabled, videoRef, stream, setStream, animationRef, drawCanvas});
+    const toggleCamera = useCameraToggle({ isCameraEnabled, setIsCameraEnabled, isMicEnabled, videoRef, stream, setStream, animationRef, drawCanvas });
 
 
 
     // Toggle Screen Share
-    const toggleScreenShare = useToggleScreenShare({isScreenShareEnabled,screenStream, setScreenStream, setIsScreenShareEnabled,setCurrentLayout, isCameraEnabled, screenVideoRef, animationRef, drawCanvas })
+    const toggleScreenShare = useToggleScreenShare({ isScreenShareEnabled, screenStream, setScreenStream, setIsScreenShareEnabled, setCurrentLayout, isCameraEnabled, screenVideoRef, animationRef, drawCanvas })
 
 
     // Toggle Microphone
@@ -297,21 +295,6 @@ const page = () => {
         };
     }, []);
 
-    const handleNavigation = (path) => {
-        // Cleanup resources before navigating to another page
-        if (stream) {
-            stream.getTracks().forEach(track => track.stop());
-        }
-        if (screenStream) {
-            screenStream.getTracks().forEach(track => track.stop());
-        }
-
-        if (socket) {
-            socket.disconnect();
-        }
-        router.push(path); // Navigate to the specified path
-    };
-
     // Restart drawing when layout changes
     useEffect(() => {
         if (animationRef.current) {
@@ -451,9 +434,7 @@ const page = () => {
                                 {isCameraEnabled ? <Video /> : <VideoOff />}
                             </Button>
 
-                            {/* <Button className={'rounded-[100%] h-10'} variant={'outline'}>
-                                <User />
-                            </Button> */}
+
 
                             <Button
                                 className={`rounded-[100%] h-10 ${isScreenShareEnabled ? 'bg-blue-500 hover:bg-blue-600' : ''}`}
@@ -471,43 +452,7 @@ const page = () => {
                 </div>
 
                 {/* Toolbar */}
-                <div className="toolbar w-[100px] ml-10 space-y-4 mt-3">
-                    <div className="option-1">
-                        <div className="flex justify-center">
-                            <Button className={'rounded-[100%] h-10'} variant={'outline'} onClick={showAddedSoonToast}>
-                                <Pencil />
-                            </Button>
-                        </div>
-                        <p className={`${figtree.className} text-center mt-2 text-sm`}>Brand</p>
-                    </div>
-
-                    <div className="option-2">
-                        <div className="flex justify-center">
-                            <Button className={'rounded-[100%] h-10'} variant={'outline'} onClick={showAddedSoonToast}>
-                                <MessageCircle />
-                            </Button>
-                        </div>
-                        <p className={`${figtree.className} text-center mt-2 text-sm`}>Chat</p>
-                    </div>
-
-                    <div className="option-3">
-                        <div className="flex justify-center">
-                            <Button className={'rounded-[100%] h-10'} variant={'outline'} onClick={showAddedSoonToast}>
-                                <ChartBar />
-                            </Button>
-                        </div>
-                        <p className={`${figtree.className} text-center mt-2 text-sm`}>Polls</p>
-                    </div>
-
-                    <div className="option-4">
-                        <div className="flex justify-center">
-                            <Button className={'rounded-[100%] h-10'} variant={'outline'} onClick={showAddedSoonToast}>
-                                <Sticker />
-                            </Button>
-                        </div>
-                        <p className={`${figtree.className} text-center mt-2 text-sm`}>Overlays</p>
-                    </div>
-                </div>
+                <Toolbar />
             </div>
             <ToastContainer />
         </>
