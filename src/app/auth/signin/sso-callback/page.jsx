@@ -1,18 +1,9 @@
-"use client"
-import React, { useEffect } from 'react'
+import React from 'react'
+import { AuthenticateWithRedirectCallback } from '@clerk/nextjs'
+
 
 const page = () => {
-    useEffect(() => {
-        window.location.href = '/dashboard'
-
-        return () => {
-
-        }
-    }, [])
-
-    return (
-        <div>Redirecting......</div>
-    )
+    return <AuthenticateWithRedirectCallback />
 }
 
 export default page

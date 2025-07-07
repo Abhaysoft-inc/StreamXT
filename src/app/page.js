@@ -71,7 +71,7 @@ export default function Home() {
             <div className="flex justify-center pt-6">
 
 
-              <TextAnimate animation="" as="h1" by="word" delay={1} duration={1.5} className={`text-5xl text-balance px-11 md:text-7xl text-center  md:px-62 whitespace-pre-line leading-none`}>
+              <TextAnimate animation="" as="h1" by="word" duration={1.5} className={`text-5xl text-balance px-11 md:text-7xl text-center  md:px-62 whitespace-pre-line leading-none`}>
                 {"Lag-free streaming directly from your browser"}
               </TextAnimate>
             </div>
@@ -187,6 +187,11 @@ export default function Home() {
             </div>
 
           </div>
+
+        </div>
+
+
+        <div className="pricing">
 
         </div>
 

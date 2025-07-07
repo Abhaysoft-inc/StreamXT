@@ -342,7 +342,14 @@ const page = () => {
                 onStopStreaming={stopStreaming}
             />
 
-            <div className="mainscreen flex w-full h-[500px] px-3 mt-6">
+            <div className="mainscreen flex w-full h-[500px] px-3 mt-6 relative">
+
+
+                {/* <div className="fixed top-1/2 left-1/2 z-40 transform -translate-x-1/2 -translate-y-1/2">
+                    <p className="text-[200px]">5</p>
+                </div> */}
+
+
                 {/* Sidebar */}
                 <div className="sidebar w-[250px] px-3 py-2">
                     <div className="flex justify-between items-center">
@@ -453,6 +460,10 @@ const page = () => {
 
                 {/* Toolbar */}
                 <Toolbar />
+
+
+
+
             </div>
             <ToastContainer />
         </>
