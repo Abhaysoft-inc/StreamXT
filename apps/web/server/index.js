@@ -9,7 +9,6 @@ const fs = require('fs')
 // const key = fs.readFileSync('./certs/cert.key');
 // const cert = fs.readFileSync('./certs/cert.crt');
 
-
 const app = express()
 const server = http.createServer(app);
 
@@ -21,9 +20,6 @@ const io = new Server(server, {
 });
 
 // ffmpeg options
-
-
-
 
 
 // listening for connection
