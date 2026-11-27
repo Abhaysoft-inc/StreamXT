@@ -643,3 +643,307 @@ export async function prepareBroadcastForStream(
     watchUrl: `https://www.youtube.com/watch?v=${broadcastData.id}`,
   };
 }
+
+export interface YouTubeLiveChatMessage {
+  id: string;
+  author: string;
+  avatarUrl: string | null;
+  text: string;
+  publishedAt: string;
+  isOwner: boolean;
+  isModerator: boolean;
+  source: 'youtube';
+}
+
+export interface YouTubePollData {
+  id: string;
+  question: string;
+  status: 'active' | 'closed';
+  options: Array<{ id: string; label: string; votes: number }>;
+  source: 'youtube';
+}
+
+export async function resolveLiveChatSession(
+  userId: string,
+  broadcastId?: string,
+): Promise<{
+  connected: boolean;
+  broadcastId: string | null;
+  liveChatId: string | null;
+}> {
+  const connection = await prisma.youTubeConnection.findUnique({
+    where: { userId },
+    select: { id: true },
+  });
+
+  if (!connection) {
+    return { connected: false, broadcastId: null, liveChatId: null };
+  }
+
+  const accessToken = await getValidAccessToken(userId);
+  const url = broadcastId
+    ? `https://www.googleapis.com/youtube/v3/liveBroadcasts?part=snippet,status&id=${encodeURIComponent(broadcastId)}`
+    : 'https://www.googleapis.com/youtube/v3/liveBroadcasts?part=snippet,status&broadcastStatus=active&broadcastType=all&maxResults=5';
+
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (!res.ok) {
+    return { connected: true, broadcastId: broadcastId ?? null, liveChatId: null };
+  }
+
+  const data = (await res.json()) as {
+    items?: Array<{ id: string; snippet?: { liveChatId?: string } }>;
+  };
+
+  const first = data.items?.[0];
+  return {
+    connected: true,
+    broadcastId: first?.id ?? broadcastId ?? null,
+    liveChatId: first?.snippet?.liveChatId ?? null,
+  };
+}
+
+export async function getLiveChatMessages(
+  userId: string,
+  params: { liveChatId: string; pageToken?: string },
+): Promise<{
+  messages: YouTubeLiveChatMessage[];
+  pollUpdate: YouTubePollData | null;
+  nextPageToken: string | null;
+  pollingIntervalMillis: number;
+}> {
+  const accessToken = await getValidAccessToken(userId);
+  const query = new URLSearchParams({
+    liveChatId: params.liveChatId,
+    part: 'id,snippet,authorDetails',
+    maxResults: '50',
+    ...(params.pageToken ? { pageToken: params.pageToken } : {}),
+  });
+
+  const res = await fetch(
+    `https://www.googleapis.com/youtube/v3/liveChat/messages?${query.toString()}`,
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+
+  const data = (await res.json()) as {
+    items?: Array<{
+      id: string;
+      snippet?: {
+        type?: string;
+        publishedAt?: string;
+        displayMessage?: string;
+        pollDetails?: {
+          status?: string;
+          metadata?: {
+            questionText?: string;
+            options?: Array<{ optionText?: string; tally?: string }>;
+          };
+        };
+      };
+      authorDetails?: {
+        displayName?: string;
+        profileImageUrl?: string;
+        isChatOwner?: boolean;
+        isChatModerator?: boolean;
+      };
+    }>;
+    nextPageToken?: string;
+    pollingIntervalMillis?: number;
+    error?: { message?: string };
+  };
+
+  if (!res.ok) {
+    throw new ExternalServiceError(
+      data.error?.message || 'Failed to load YouTube live chat messages',
+      ErrorCode.OAUTH_PROVIDER_ERROR,
+    );
+  }
+
+  const messages: YouTubeLiveChatMessage[] = [];
+  let pollUpdate: YouTubePollData | null = null;
+
+  for (const item of data.items ?? []) {
+    const type = item.snippet?.type;
+    if (type === 'pollEvent' && item.snippet?.pollDetails?.metadata) {
+      const meta = item.snippet.pollDetails.metadata;
+      pollUpdate = {
+        id: item.id,
+        question: meta.questionText ?? 'Live Poll',
+        status: item.snippet.pollDetails.status === 'closed' ? 'closed' : 'active',
+        options: (meta.options ?? []).map((opt, idx) => ({
+          id: `${item.id}-opt-${idx}`,
+          label: opt.optionText ?? `Option ${idx + 1}`,
+          votes: Number(opt.tally || 0),
+        })),
+        source: 'youtube',
+      };
+      continue;
+    }
+
+    if (item.snippet?.displayMessage) {
+      messages.push({
+        id: item.id,
+        author: item.authorDetails?.displayName ?? 'Viewer',
+        avatarUrl: item.authorDetails?.profileImageUrl ?? null,
+        text: item.snippet.displayMessage,
+        publishedAt: item.snippet.publishedAt ?? new Date().toISOString(),
+        isOwner: Boolean(item.authorDetails?.isChatOwner),
+        isModerator: Boolean(item.authorDetails?.isChatModerator),
+        source: 'youtube',
+      });
+    }
+  }
+
+  return {
+    messages,
+    pollUpdate,
+    nextPageToken: data.nextPageToken ?? null,
+    pollingIntervalMillis: Math.max(4000, Math.min(15000, data.pollingIntervalMillis ?? 5000)),
+  };
+}
+
+export async function sendLiveChatMessage(
+  userId: string,
+  input: { liveChatId: string; message: string },
+): Promise<YouTubeLiveChatMessage> {
+  const accessToken = await getValidAccessToken(userId);
+
+  const res = await fetch(
+    'https://www.googleapis.com/youtube/v3/liveChat/messages?part=snippet,authorDetails',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        snippet: {
+          liveChatId: input.liveChatId,
+          type: 'textMessageEvent',
+          textMessageDetails: {
+            messageText: input.message,
+          },
+        },
+      }),
+    },
+  );
+
+  const data = (await res.json()) as {
+    id?: string;
+    snippet?: { displayMessage?: string; publishedAt?: string };
+    authorDetails?: { displayName?: string; profileImageUrl?: string };
+    error?: { message?: string };
+  };
+
+  if (!res.ok || !data.id) {
+    throw new ExternalServiceError(
+      data.error?.message || 'Failed to send YouTube live chat message',
+      ErrorCode.OAUTH_PROVIDER_ERROR,
+    );
+  }
+
+  return {
+    id: data.id,
+    author: data.authorDetails?.displayName ?? 'Host',
+    avatarUrl: data.authorDetails?.profileImageUrl ?? null,
+    text: data.snippet?.displayMessage ?? input.message,
+    publishedAt: data.snippet?.publishedAt ?? new Date().toISOString(),
+    isOwner: true,
+    isModerator: false,
+    source: 'youtube',
+  };
+}
+
+export async function createYouTubePoll(
+  userId: string,
+  input: { liveChatId: string; question: string; options: string[] },
+): Promise<YouTubePollData> {
+  const accessToken = await getValidAccessToken(userId);
+
+  const res = await fetch(
+    'https://www.googleapis.com/youtube/v3/liveChat/messages?part=snippet',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        snippet: {
+          liveChatId: input.liveChatId,
+          type: 'pollEvent',
+          pollDetails: {
+            metadata: {
+              questionText: input.question,
+              options: input.options.map((optionText) => ({ optionText })),
+            },
+          },
+        },
+      }),
+    },
+  );
+
+  const data = (await res.json()) as {
+    id?: string;
+    snippet?: {
+      pollDetails?: {
+        status?: string;
+        metadata?: {
+          questionText?: string;
+          options?: Array<{ optionText?: string; tally?: string }>;
+        };
+      };
+    };
+    error?: { message?: string };
+  };
+
+  if (!res.ok || !data.id) {
+    throw new ExternalServiceError(
+      data.error?.message || 'Failed to launch YouTube live poll (stream must be live)',
+      ErrorCode.OAUTH_PROVIDER_ERROR,
+    );
+  }
+
+  const meta = data.snippet?.pollDetails?.metadata;
+  const fallbackOptions: Array<{ optionText?: string; tally?: string }> = input.options.map((o) => ({
+    optionText: o,
+  }));
+  const pollOptions = meta?.options ?? fallbackOptions;
+  return {
+    id: data.id,
+    question: meta?.questionText ?? input.question,
+    status: data.snippet?.pollDetails?.status === 'closed' ? 'closed' : 'active',
+    options: pollOptions.map((opt, idx) => ({
+      id: `${data.id}-opt-${idx}`,
+      label: opt.optionText ?? input.options[idx] ?? `Option ${idx + 1}`,
+      votes: Number(opt.tally || 0),
+    })),
+    source: 'youtube',
+  };
+}
+
+export async function closeYouTubePoll(userId: string, pollId: string): Promise<void> {
+  const accessToken = await getValidAccessToken(userId);
+
+  const res = await fetch(
+    `https://www.googleapis.com/youtube/v3/liveChat/messages/transition?id=${encodeURIComponent(
+      pollId,
+    )}&status=closed`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
+    throw new ExternalServiceError(
+      data.error?.message || 'Failed to close YouTube poll',
+      ErrorCode.OAUTH_PROVIDER_ERROR,
+    );
+  }
+}

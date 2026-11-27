@@ -11,28 +11,36 @@ export default function ChatPanel({
   onSendMessage,
   onTogglePin,
   onClearMessages,
+  youtubeChatStatus = 'idle', // 'connected' | 'inactive' | 'idle'
+  isSending = false,
 }) {
   const [draft, setDraft] = useState('')
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
     const text = draft.trim()
-    if (!text) return
-    onSendMessage(text)
-    setDraft('')
+    if (!text || isSending) return
+    const ok = await onSendMessage(text)
+    if (ok !== false) {
+      setDraft('')
+    }
   }
 
   return (
     <div className="flex h-full flex-col gap-3">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <p className="text-xs text-muted-foreground">
-          Pin a message to show it on your stream.
+          {youtubeChatStatus === 'connected'
+            ? 'YouTube Live Chat + Room synced'
+            : youtubeChatStatus === 'inactive'
+              ? 'Room chat active (start YT broadcast to sync)'
+              : 'Pin any message to display it on stream.'}
         </p>
         {messages.length > 0 ? (
           <button
             type="button"
             onClick={onClearMessages}
-            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-muted-foreground transition hover:bg-secondary hover:text-foreground cursor-pointer"
+            className="inline-flex shrink-0 items-center gap-1 rounded px-2 py-1 text-xs text-muted-foreground transition hover:bg-secondary hover:text-foreground cursor-pointer"
           >
             <Trash2 className="size-3.5" />
             Clear
@@ -57,8 +65,17 @@ export default function ChatPanel({
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                       <span className="truncate text-xs font-semibold">{msg.author}</span>
+                      {msg.source === 'youtube' ? (
+                        <span className="rounded bg-red-500/20 px-1.5 py-0.5 text-[10px] font-medium text-red-300">
+                          YT
+                        </span>
+                      ) : msg.source === 'room' ? (
+                        <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                          Room
+                        </span>
+                      ) : null}
                       <span className="text-[11px] text-muted-foreground">{msg.time}</span>
                     </div>
                     <p className="mt-1 break-words text-sm">{msg.text}</p>
@@ -69,7 +86,7 @@ export default function ChatPanel({
                     size="sm"
                     variant={isPinned ? 'default' : 'outline'}
                     onClick={() => onTogglePin(msg.id)}
-                    className="h-7 px-2 text-[11px] cursor-pointer"
+                    className="h-7 shrink-0 px-2 text-[11px] cursor-pointer"
                   >
                     {isPinned ? (
                       <>
@@ -94,10 +111,21 @@ export default function ChatPanel({
         <Input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder="Send a chat message..."
+          placeholder={
+            youtubeChatStatus === 'connected'
+              ? 'Send to YouTube & room chat...'
+              : 'Send a room chat message...'
+          }
+          maxLength={youtubeChatStatus === 'connected' ? 200 : 300}
           className="h-9 text-sm"
         />
-        <Button type="submit" size="sm" variant="outline" className="h-9 px-3 cursor-pointer">
+        <Button
+          type="submit"
+          size="sm"
+          variant="outline"
+          disabled={isSending}
+          className="h-9 px-3 cursor-pointer"
+        >
           <Send className="size-4" />
         </Button>
       </form>

@@ -4,12 +4,15 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import {
   Headphones,
+  MessageSquare,
   Mic,
   MicOff,
   MonitorUp,
   PhoneOff,
+  Send,
   Video,
   VideoOff,
+  X,
 } from 'lucide-react'
 import { Figtree } from 'next/font/google'
 import { ToastContainer, toast } from 'react-toastify'
@@ -41,14 +44,20 @@ export default function GuestCallPage() {
   const [isMicEnabled, setIsMicEnabled] = useState(true)
   const [isVideoEnabled, setIsVideoEnabled] = useState(true)
   const [isScreenSharing, setIsScreenSharing] = useState(false)
+  const [showRoomPanel, setShowRoomPanel] = useState(false)
+  const [chatDraft, setChatDraft] = useState('')
 
   const {
     connectionState,
     remotePeer,
     remoteStream,
+    roomChatMessages,
+    roomPoll,
     p2pError,
     syncLocalTracks,
     emitMediaState,
+    sendRoomChat,
+    voteRoomPoll,
     leaveRoom,
   } = useP2PCall({
     roomId,
@@ -466,6 +475,22 @@ export default function GuestCallPage() {
 
             <Button
               type="button"
+              variant={showRoomPanel ? 'default' : 'outline'}
+              onClick={() => setShowRoomPanel((prev) => !prev)}
+              title="Room chat and polls"
+              className="rounded-full h-10 px-4 text-xs cursor-pointer"
+            >
+              <MessageSquare className="mr-1.5 size-4" />
+              Chat & Polls
+              {roomPoll || roomChatMessages.length > 0 ? (
+                <span className="ml-1.5 rounded-full bg-white/15 px-1.5 py-0.5 text-[10px]">
+                  {roomChatMessages.length}
+                </span>
+              ) : null}
+            </Button>
+
+            <Button
+              type="button"
               onClick={handleLeave}
               title="Leave call"
               className="rounded-full h-10 px-4 bg-red-600 hover:bg-red-500 text-white cursor-pointer"
@@ -474,6 +499,122 @@ export default function GuestCallPage() {
               Leave
             </Button>
           </div>
+
+          {showRoomPanel ? (
+            <Card className="w-full max-w-5xl">
+              <CardHeader className="flex flex-row items-center justify-between py-3 px-4 border-b border-border">
+                <CardTitle className="text-sm font-semibold">Studio Chat & Live Poll</CardTitle>
+                <button
+                  type="button"
+                  aria-label="Close room panel"
+                  onClick={() => setShowRoomPanel(false)}
+                  className="rounded p-1 text-muted-foreground hover:text-foreground cursor-pointer"
+                >
+                  <X className="size-4" />
+                </button>
+              </CardHeader>
+              <CardContent className="p-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                {/* Live Poll Section */}
+                <div className="space-y-2.5 rounded-lg border border-border bg-background/60 p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold">Live Poll</span>
+                    {roomPoll ? (
+                      <span className="text-[11px] text-muted-foreground">
+                        {roomPoll.options.reduce((s, o) => s + o.votes, 0)} votes
+                      </span>
+                    ) : null}
+                  </div>
+                  {roomPoll ? (
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">{roomPoll.question}</p>
+                      {(() => {
+                        const total = roomPoll.options.reduce((s, o) => s + o.votes, 0)
+                        const isYt = roomPoll.source === 'youtube'
+                        return roomPoll.options.map((opt) => {
+                          const pct = total > 0 ? Math.round((opt.votes / total) * 100) : 0
+                          return (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              disabled={isYt}
+                              onClick={() => voteRoomPoll(opt.id)}
+                              className={`relative w-full overflow-hidden rounded-md border border-border bg-background px-3 py-2 text-left transition ${
+                                isYt ? 'cursor-default' : 'hover:border-white/50 cursor-pointer'
+                              }`}
+                            >
+                              <div
+                                className="absolute inset-y-0 left-0 bg-white/15 transition-all"
+                                style={{ width: `${pct}%` }}
+                              />
+                              <div className="relative flex items-center justify-between gap-2 text-xs">
+                                <span className="font-medium">{opt.label}</span>
+                                <span className="tabular-nums text-muted-foreground">
+                                  {pct}% ({opt.votes})
+                                </span>
+                              </div>
+                            </button>
+                          )
+                        })
+                      })()}
+                      <p className="text-[11px] text-muted-foreground">
+                        {roomPoll.source === 'youtube'
+                          ? 'Viewers vote in YouTube Live Chat.'
+                          : 'Click an option to cast your vote.'}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="py-6 text-center text-xs text-muted-foreground">
+                      No active poll right now.
+                    </p>
+                  )}
+                </div>
+
+                {/* Room Chat Section */}
+                <div className="flex flex-col gap-2.5 rounded-lg border border-border bg-background/60 p-3">
+                  <span className="text-xs font-semibold">Backstage Chat</span>
+                  <div className="flex-1 space-y-2 overflow-y-auto min-h-[140px] max-h-[200px] pr-1">
+                    {roomChatMessages.length === 0 ? (
+                      <p className="py-8 text-center text-xs text-muted-foreground">
+                        No messages yet. Say hi to the host!
+                      </p>
+                    ) : (
+                      roomChatMessages.map((m) => (
+                        <div key={m.id} className="rounded border border-border/80 bg-background px-2.5 py-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold">{m.author}</span>
+                            <span className="text-[11px] text-muted-foreground">{m.time}</span>
+                          </div>
+                          <p className="mt-0.5 text-sm break-words">{m.text}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault()
+                      const clean = chatDraft.trim()
+                      if (!clean) return
+                      if (sendRoomChat(clean)) {
+                        setChatDraft('')
+                      }
+                    }}
+                    className="flex gap-2"
+                  >
+                    <Input
+                      value={chatDraft}
+                      onChange={(e) => setChatDraft(e.target.value)}
+                      placeholder="Send message to host..."
+                      maxLength={300}
+                      className="h-9 text-sm"
+                    />
+                    <Button type="submit" size="sm" variant="outline" className="h-9 px-3 cursor-pointer">
+                      <Send className="size-4" />
+                    </Button>
+                  </form>
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
         </div>
       )}
 

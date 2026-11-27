@@ -13,6 +13,8 @@ export default function PollsPanel({
   onVoteOption,
   onToggleShowOnStream,
   onEndPoll,
+  youtubeConnected = false,
+  isBusy = false,
 }) {
   const [question, setQuestion] = useState('')
   const [options, setOptions] = useState(['', ''])
@@ -31,13 +33,15 @@ export default function PollsPanel({
     setOptions((prev) => prev.filter((_, idx) => idx !== index))
   }
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
+    if (isBusy) return
     const cleanQuestion = question.trim()
     const cleanOptions = options.map((o) => o.trim()).filter(Boolean)
     if (!cleanQuestion || cleanOptions.length < 2) return
 
-    onCreatePoll({
+    const ok = await onCreatePoll({
+      id: `poll-${Date.now()}`,
       question: cleanQuestion,
       options: cleanOptions.map((label, idx) => ({
         id: `opt-${idx}-${Date.now()}`,
@@ -45,22 +49,34 @@ export default function PollsPanel({
         votes: 0,
       })),
     })
-    setQuestion('')
-    setOptions(['', ''])
+    if (ok !== false) {
+      setQuestion('')
+      setOptions(['', ''])
+    }
   }
 
   const totalVotes = poll ? poll.options.reduce((sum, opt) => sum + opt.votes, 0) : 0
+  const isYouTubePoll = poll?.source === 'youtube'
 
   return (
     <div className="space-y-4">
       {poll ? (
         <div className="space-y-3 rounded-lg border border-border bg-background/60 p-3.5">
-          <div>
+          <div className="flex items-center justify-between gap-2">
             <p className="text-xs text-muted-foreground">
               {totalVotes} {totalVotes === 1 ? 'vote' : 'votes'}
             </p>
-            <h4 className="mt-1 text-sm font-semibold">{poll.question}</h4>
+            <span
+              className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                isYouTubePoll
+                  ? 'bg-red-500/20 text-red-300'
+                  : 'bg-secondary text-muted-foreground'
+              }`}
+            >
+              {isYouTubePoll ? 'YouTube Live Poll' : 'Room Poll'}
+            </span>
           </div>
+          <h4 className="text-sm font-semibold">{poll.question}</h4>
 
           <div className="space-y-2">
             {poll.options.map((opt) => {
@@ -69,9 +85,14 @@ export default function PollsPanel({
                 <button
                   key={opt.id}
                   type="button"
+                  disabled={isYouTubePoll}
                   onClick={() => onVoteOption(opt.id)}
-                  title="Click to simulate +1 vote"
-                  className="relative w-full overflow-hidden rounded-md border border-border bg-background px-3 py-2 text-left transition hover:border-white/50 cursor-pointer"
+                  title={isYouTubePoll ? 'Viewers vote inside YouTube chat' : 'Vote in room poll'}
+                  className={`relative w-full overflow-hidden rounded-md border border-border bg-background px-3 py-2 text-left transition ${
+                    isYouTubePoll
+                      ? 'cursor-default'
+                      : 'hover:border-white/50 cursor-pointer'
+                  }`}
                 >
                   <div
                     className="absolute inset-y-0 left-0 bg-white/15 transition-all"
@@ -89,7 +110,9 @@ export default function PollsPanel({
           </div>
 
           <p className="text-[11px] text-muted-foreground">
-            Click any option to simulate live votes.
+            {isYouTubePoll
+              ? 'Tallies sync automatically from YouTube Live Chat.'
+              : 'Guests in the call can vote live, or click an option above.'}
           </p>
 
           <div className="flex flex-wrap gap-2 pt-1">
@@ -116,6 +139,7 @@ export default function PollsPanel({
               type="button"
               size="sm"
               variant="outline"
+              disabled={isBusy}
               onClick={onEndPoll}
               className="cursor-pointer"
             >
@@ -135,6 +159,7 @@ export default function PollsPanel({
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               placeholder="What should we build next?"
+              maxLength={150}
               required
               className="h-9 text-sm"
             />
@@ -161,6 +186,7 @@ export default function PollsPanel({
                   value={opt}
                   onChange={(e) => handleOptionChange(idx, e.target.value)}
                   placeholder={`Option ${idx + 1}`}
+                  maxLength={60}
                   required
                   className="h-8 text-sm"
                 />
@@ -178,8 +204,14 @@ export default function PollsPanel({
             ))}
           </div>
 
-          <Button type="submit" variant="outline" className="w-full cursor-pointer">
-            Launch Poll
+          <p className="text-[11px] text-muted-foreground">
+            {youtubeConnected
+              ? 'Launches on YouTube Live Chat when connected (falls back to room poll if broadcast is offline).'
+              : 'Launches a real-time poll for everyone in the studio room.'}
+          </p>
+
+          <Button type="submit" variant="outline" disabled={isBusy} className="w-full cursor-pointer">
+            {isBusy ? 'Launching...' : 'Launch Poll'}
           </Button>
         </form>
       )}

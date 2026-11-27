@@ -11,8 +11,16 @@ export interface P2PPeerInfo {
   screenSharing: boolean;
 }
 
+export interface RoomPoll {
+  id: string;
+  question: string;
+  options: Array<{ id: string; label: string; votes: number }>;
+  source: 'room' | 'youtube';
+}
+
 const rooms = new Map<string, Map<string, P2PPeerInfo>>();
 const roomStudioStates = new Map<string, unknown>();
+const roomPolls = new Map<string, RoomPoll>();
 
 export function getActiveP2PRoomCount(): number {
   return rooms.size;
@@ -91,6 +99,11 @@ export function registerP2PSignaling(io: Server): void {
           socket.emit('p2p:studio-state', savedState);
         }
 
+        const savedPoll = roomPolls.get(roomId);
+        if (savedPoll) {
+          socket.emit('p2p:poll-update', savedPoll);
+        }
+
         socket.to(roomId).emit('p2p:peer-joined', peerInfo);
       },
     );
@@ -118,6 +131,49 @@ export function registerP2PSignaling(io: Server): void {
       if (!joinedRoomId) return;
       roomStudioStates.set(joinedRoomId, state);
       socket.to(joinedRoomId).emit('p2p:studio-state', state);
+    });
+
+    socket.on('p2p:chat-send', (payload: { text?: string }) => {
+      if (!joinedRoomId) return;
+      const text = payload.text?.trim();
+      if (!text) return;
+      const peer = rooms.get(joinedRoomId)?.get(socket.id);
+      const msg = {
+        id: `room-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        author: peer?.name || 'Participant',
+        role: peer?.role || 'guest',
+        text: text.slice(0, 300),
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        source: 'room' as const,
+      };
+      p2p.to(joinedRoomId).emit('p2p:chat-message', msg);
+    });
+
+    socket.on('p2p:poll-create', (poll: RoomPoll) => {
+      if (!joinedRoomId || !poll?.question) return;
+      roomPolls.set(joinedRoomId, poll);
+      p2p.to(joinedRoomId).emit('p2p:poll-update', poll);
+    });
+
+    socket.on('p2p:poll-vote', (payload: { optionId?: string }) => {
+      if (!joinedRoomId || !payload.optionId) return;
+      const poll = roomPolls.get(joinedRoomId);
+      if (!poll) return;
+
+      const updated: RoomPoll = {
+        ...poll,
+        options: poll.options.map((opt) =>
+          opt.id === payload.optionId ? { ...opt, votes: opt.votes + 1 } : opt,
+        ),
+      };
+      roomPolls.set(joinedRoomId, updated);
+      p2p.to(joinedRoomId).emit('p2p:poll-update', updated);
+    });
+
+    socket.on('p2p:poll-end', () => {
+      if (!joinedRoomId) return;
+      roomPolls.delete(joinedRoomId);
+      p2p.to(joinedRoomId).emit('p2p:poll-update', null);
     });
 
     socket.on('p2p:offer', (payload: { to?: string; sdp?: unknown }) => {
@@ -152,6 +208,7 @@ export function registerP2PSignaling(io: Server): void {
         if (room.size === 0) {
           rooms.delete(joinedRoomId);
           roomStudioStates.delete(joinedRoomId);
+          roomPolls.delete(joinedRoomId);
         }
       }
       socket.to(joinedRoomId).emit('p2p:peer-left', { peerId: socket.id });

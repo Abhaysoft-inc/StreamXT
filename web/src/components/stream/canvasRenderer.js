@@ -279,16 +279,81 @@ function drawSceneOverlay(ctx, width, height, overlays, accent) {
   ctx.restore()
 }
 
-function drawCameraVideo(ctx, camVideo, x, y, w, h, mirrored) {
-  if (!mirrored) {
-    ctx.drawImage(camVideo, x, y, w, h)
+export function computeCropRect(srcW, srcH, targetW, targetH, crop = null, mirrored = false) {
+  const vw = srcW || 1280
+  const vh = srcH || 720
+  const zoom = Math.max(1, Math.min(3, crop?.zoom ?? 1))
+  const panX = Math.max(-1, Math.min(1, crop?.panX ?? 0))
+  const panY = Math.max(-1, Math.min(1, crop?.panY ?? 0))
+  const fit = crop?.fit === 'contain' ? 'contain' : 'cover'
+  const effectivePanX = mirrored ? -panX : panX
+
+  if (fit === 'contain') {
+    const sw = vw / zoom
+    const sh = vh / zoom
+    const sx = (vw - sw) * ((effectivePanX + 1) / 2)
+    const sy = (vh - sh) * ((panY + 1) / 2)
+
+    const srcAspect = sw / sh
+    const dstAspect = targetW / targetH
+    let dw = targetW
+    let dh = targetH
+    let dx = 0
+    let dy = 0
+
+    if (srcAspect > dstAspect) {
+      dh = targetW / srcAspect
+      dy = (targetH - dh) / 2
+    } else {
+      dw = targetH * srcAspect
+      dx = (targetW - dw) / 2
+    }
+
+    return { sx, sy, sw, sh, dx, dy, dw, dh }
+  }
+
+  const srcAspect = vw / vh
+  const dstAspect = targetW / targetH
+  const baseSw = srcAspect > dstAspect ? vh * dstAspect : vw
+  const baseSh = srcAspect > dstAspect ? vh : vw / dstAspect
+
+  const sw = baseSw / zoom
+  const sh = baseSh / zoom
+  const slackX = Math.max(0, vw - sw)
+  const slackY = Math.max(0, vh - sh)
+
+  const sx = slackX * ((effectivePanX + 1) / 2)
+  const sy = slackY * ((panY + 1) / 2)
+
+  return { sx, sy, sw, sh, dx: 0, dy: 0, dw: targetW, dh: targetH }
+}
+
+function drawVideoFitted(ctx, video, x, y, w, h, options = {}) {
+  const { mirrored = false, fit = 'cover', crop = null } = options
+  const vw = video.videoWidth || 0
+  const vh = video.videoHeight || 0
+
+  if (!vw || !vh) {
+    ctx.drawImage(video, x, y, w, h)
     return
   }
 
+  const rect = computeCropRect(vw, vh, w, h, { ...(crop || {}), fit }, mirrored)
+
+  if (fit === 'contain') {
+    ctx.fillStyle = '#09090b'
+    ctx.fillRect(x, y, w, h)
+  }
+
   ctx.save()
-  ctx.translate(x + w, y)
-  ctx.scale(-1, 1)
-  ctx.drawImage(camVideo, 0, 0, w, h)
+  if (mirrored) {
+    ctx.translate(x + w, y)
+    ctx.scale(-1, 1)
+    const mirroredDx = w - (rect.dx + rect.dw)
+    ctx.drawImage(video, rect.sx, rect.sy, rect.sw, rect.sh, mirroredDx, rect.dy, rect.dw, rect.dh)
+  } else {
+    ctx.drawImage(video, rect.sx, rect.sy, rect.sw, rect.sh, x + rect.dx, y + rect.dy, rect.dw, rect.dh)
+  }
   ctx.restore()
 }
 
@@ -307,6 +372,7 @@ export function renderStudioFrame({
     currentLayout,
     isCameraEnabled,
     isCameraMirrored = false,
+    cameraCrop = null,
     isScreenShareEnabled,
     isGuestOnStage = false,
     remotePeer = null,
@@ -338,11 +404,14 @@ export function renderStudioFrame({
     remoteVideo &&
     remoteVideo.readyState >= 2
   const videoFilter = getCssVideoFilter(overlays?.videoFilter)
+  const camFit = cameraCrop?.fit === 'contain' ? 'contain' : 'cover'
 
   // Main Video Layer
   if (currentLayout === 'guest') {
     if (remoteVideoActive) {
-      ctx.drawImage(remoteVideo, 0, 0, width, height)
+      drawVideoFitted(ctx, remoteVideo, 0, 0, width, height, {
+        fit: remotePeer?.screenSharing ? 'contain' : 'cover',
+      })
     } else if (isGuestOnStage && remotePeer) {
       ctx.fillStyle = '#18181b'
       ctx.fillRect(0, 0, width, height)
@@ -361,7 +430,7 @@ export function renderStudioFrame({
   } else if (currentLayout === 'screen' && screenReady) {
     ctx.save()
     ctx.filter = videoFilter
-    ctx.drawImage(screenVideo, 0, 0, width, height)
+    drawVideoFitted(ctx, screenVideo, 0, 0, width, height, { fit: 'contain' })
     ctx.restore()
 
     if (camReady) {
@@ -386,7 +455,11 @@ export function renderStudioFrame({
       }
       ctx.clip()
       ctx.filter = videoFilter
-      drawCameraVideo(ctx, camVideo, camX, camY, camW, camH, isCameraMirrored)
+      drawVideoFitted(ctx, camVideo, camX, camY, camW, camH, {
+        mirrored: isCameraMirrored,
+        fit: camFit,
+        crop: cameraCrop,
+      })
       ctx.restore()
 
       ctx.save()
@@ -415,7 +488,11 @@ export function renderStudioFrame({
     if (camReady) {
       ctx.clip()
       ctx.filter = videoFilter
-      drawCameraVideo(ctx, camVideo, leftX, topY, paneW, paneH, isCameraMirrored)
+      drawVideoFitted(ctx, camVideo, leftX, topY, paneW, paneH, {
+        mirrored: isCameraMirrored,
+        fit: camFit,
+        crop: cameraCrop,
+      })
     } else {
       ctx.fillStyle = '#18181b'
       ctx.fill()
@@ -435,7 +512,9 @@ export function renderStudioFrame({
     drawRoundedRect(ctx, rightX, topY, paneW, paneH, 14)
     if (remoteVideoActive) {
       ctx.clip()
-      ctx.drawImage(remoteVideo, rightX, topY, paneW, paneH)
+      drawVideoFitted(ctx, remoteVideo, rightX, topY, paneW, paneH, {
+        fit: remotePeer?.screenSharing ? 'contain' : 'cover',
+      })
     } else {
       ctx.fillStyle = '#18181b'
       ctx.fill()
@@ -456,7 +535,11 @@ export function renderStudioFrame({
   } else if (camReady) {
     ctx.save()
     ctx.filter = videoFilter
-    drawCameraVideo(ctx, camVideo, 0, 0, width, height, isCameraMirrored)
+    drawVideoFitted(ctx, camVideo, 0, 0, width, height, {
+      mirrored: isCameraMirrored,
+      fit: camFit,
+      crop: cameraCrop,
+    })
     ctx.restore()
   } else {
     ctx.fillStyle = '#a1a1aa'

@@ -33,6 +33,8 @@ export default function useP2PCall({
   const [hostAudioStream, setHostAudioStream] = useState(null)
   const [guestStream, setGuestStream] = useState(null)
   const [studioState, setStudioState] = useState(null)
+  const [roomChatMessages, setRoomChatMessages] = useState([])
+  const [roomPoll, setRoomPoll] = useState(null)
   const [connectionState, setConnectionState] = useState('idle')
   const [p2pError, setP2pError] = useState('')
 
@@ -254,6 +256,18 @@ export default function useP2PCall({
       setStudioState(state)
     })
 
+    socket.on('p2p:chat-message', (msg) => {
+      if (!msg?.id) return
+      setRoomChatMessages((prev) => {
+        if (prev.some((m) => m.id === msg.id)) return prev
+        return [...prev.slice(-99), msg]
+      })
+    })
+
+    socket.on('p2p:poll-update', (poll) => {
+      setRoomPoll(poll || null)
+    })
+
     socket.on('p2p:offer', async ({ from, sdp }) => {
       try {
         const existing = peersRef.current.get(from)
@@ -356,6 +370,31 @@ export default function useP2PCall({
     socketRef.current?.emit('p2p:studio-state', state)
   }, [])
 
+  const sendRoomChat = useCallback((text) => {
+    const clean = text?.trim()
+    if (!clean || !socketRef.current?.connected) return false
+    socketRef.current.emit('p2p:chat-send', { text: clean })
+    return true
+  }, [])
+
+  const createRoomPoll = useCallback((poll) => {
+    if (!poll?.question || !socketRef.current?.connected) return false
+    socketRef.current.emit('p2p:poll-create', poll)
+    return true
+  }, [])
+
+  const voteRoomPoll = useCallback((optionId) => {
+    if (!optionId || !socketRef.current?.connected) return false
+    socketRef.current.emit('p2p:poll-vote', { optionId })
+    return true
+  }, [])
+
+  const endRoomPoll = useCallback(() => {
+    if (!socketRef.current?.connected) return false
+    socketRef.current.emit('p2p:poll-end')
+    return true
+  }, [])
+
   const leaveRoom = useCallback(() => {
     socketRef.current?.emit('p2p:leave')
     socketRef.current?.disconnect()
@@ -378,10 +417,16 @@ export default function useP2PCall({
     hostAudioStream,
     guestStream,
     studioState,
+    roomChatMessages,
+    roomPoll,
     p2pError,
     syncLocalTracks,
     emitMediaState,
     emitStudioState,
+    sendRoomChat,
+    createRoomPoll,
+    voteRoomPoll,
+    endRoomPoll,
     leaveRoom,
   }
 }

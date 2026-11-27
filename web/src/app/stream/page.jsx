@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
+  Crop,
   Mic,
   MicOff,
   MonitorUp,
@@ -25,6 +26,7 @@ import PollsPanel from '@/components/stream/panels/PollsPanel'
 import OverlaysPanel from '@/components/stream/panels/OverlaysPanel'
 import { DEFAULT_OVERLAYS } from '@/components/stream/overlayPresets'
 import { renderStudioFrame } from '@/components/stream/canvasRenderer'
+import CameraCropModal from '@/components/stream/CameraCropModal'
 import { useAuth } from '@/context/AuthContext'
 import { apiFetch } from '@/lib/api-client'
 import useToggleMic from '../hooks/useToggleMic'
@@ -78,6 +80,13 @@ export default function StreamPage() {
   const [draftExtraTargets, setDraftExtraTargets] = useState([])
   const [streamTitle, setStreamTitle] = useState('StreamXT Live')
   const [streamWatchUrl, setStreamWatchUrl] = useState('')
+  const [streamBroadcastId, setStreamBroadcastId] = useState('')
+  const [ytConnected, setYtConnected] = useState(false)
+  const [ytLiveChatId, setYtLiveChatId] = useState(null)
+  const [chatSending, setChatSending] = useState(false)
+  const [pollBusy, setPollBusy] = useState(false)
+  const ytPageTokenRef = useRef(null)
+  const seenChatIdsRef = useRef(new Set(['welcome-1']))
   const [streamQuality, setStreamQuality] = useState('720p30')
   const [streamStats, setStreamStats] = useState(null)
   const [showKeyModal, setShowKeyModal] = useState(false)
@@ -88,6 +97,8 @@ export default function StreamPage() {
 
   const [isCameraEnabled, setIsCameraEnabled] = useState(true)
   const [isCameraMirrored, setIsCameraMirrored] = useState(false)
+  const [cameraCrop, setCameraCrop] = useState({ zoom: 1, panX: 0, panY: 0, fit: 'cover' })
+  const [showCropModal, setShowCropModal] = useState(false)
   const [isScreenShareEnabled, setIsScreenShareEnabled] = useState(false)
   const [isMicEnabled, setIsMicEnabled] = useState(true)
   const [currentLayout, setCurrentLayout] = useState('single')
@@ -126,10 +137,16 @@ export default function StreamPage() {
     connectionState: p2pState,
     remotePeer,
     remoteStream,
+    roomChatMessages,
+    roomPoll,
     p2pError,
     syncLocalTracks,
     emitMediaState,
     emitStudioState,
+    sendRoomChat,
+    createRoomPoll,
+    voteRoomPoll,
+    endRoomPoll,
   } = useP2PCall({
     roomId,
     role: 'host',
@@ -187,6 +204,151 @@ export default function StreamPage() {
     }
   }, [p2pError])
 
+  // Merge P2P room chat messages into the unified Studio chat feed
+  useEffect(() => {
+    if (!roomChatMessages?.length) return
+    setChatMessages((prev) => {
+      const next = [...prev]
+      let changed = false
+      for (const msg of roomChatMessages) {
+        if (!msg?.id || seenChatIdsRef.current.has(msg.id)) continue
+        seenChatIdsRef.current.add(msg.id)
+        next.push(msg)
+        changed = true
+      }
+      return changed ? next.slice(-150) : prev
+    })
+  }, [roomChatMessages])
+
+  // Sync P2P room poll updates (including guest votes) into activePoll
+  useEffect(() => {
+    if (!roomPoll) {
+      setActivePoll((prev) => (prev && prev.source !== 'youtube' ? null : prev))
+      return
+    }
+    setActivePoll(roomPoll)
+  }, [roomPoll])
+
+  // Resolve YouTube liveChatId for real YouTube chat & poll sync
+  useEffect(() => {
+    if (!user || streamDestination !== 'youtube') {
+      setYtConnected(false)
+      setYtLiveChatId(null)
+      return
+    }
+
+    let cancelled = false
+    const checkSession = async () => {
+      try {
+        const qs = streamBroadcastId
+          ? `?broadcastId=${encodeURIComponent(streamBroadcastId)}`
+          : ''
+        const res = await apiFetch(`/api/v1/youtube/chat/session${qs}`)
+        if (cancelled) return
+        setYtConnected(Boolean(res?.connected))
+        if (res?.liveChatId) {
+          setYtLiveChatId((prev) => {
+            if (prev !== res.liveChatId) {
+              ytPageTokenRef.current = null
+            }
+            return res.liveChatId
+          })
+        } else {
+          setYtLiveChatId(null)
+        }
+      } catch {
+        if (!cancelled) {
+          setYtConnected(false)
+          setYtLiveChatId(null)
+        }
+      }
+    }
+
+    checkSession()
+    const timer = setInterval(checkSession, isStreaming ? 12000 : 25000)
+
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [user, streamDestination, streamBroadcastId, isStreaming])
+
+  // Poll YouTube Live Chat messages & live poll tallies using YouTube's pollingIntervalMillis
+  useEffect(() => {
+    if (!ytLiveChatId) return
+
+    let cancelled = false
+    let timerId = null
+
+    const pollChat = async () => {
+      let nextDelay = 5000
+      try {
+        const params = new URLSearchParams({ liveChatId: ytLiveChatId })
+        if (ytPageTokenRef.current) {
+          params.set('pageToken', ytPageTokenRef.current)
+        }
+        const res = await apiFetch(`/api/v1/youtube/chat/messages?${params.toString()}`)
+        if (cancelled) return
+
+        if (res?.nextPageToken) {
+          ytPageTokenRef.current = res.nextPageToken
+        }
+        if (typeof res?.pollingIntervalMillis === 'number') {
+          nextDelay = res.pollingIntervalMillis
+        }
+
+        if (Array.isArray(res?.messages) && res.messages.length > 0) {
+          setChatMessages((prev) => {
+            const next = [...prev]
+            let changed = false
+            for (const m of res.messages) {
+              if (!m?.id || seenChatIdsRef.current.has(m.id)) continue
+              seenChatIdsRef.current.add(m.id)
+              const timeStr = m.publishedAt
+                ? new Date(m.publishedAt).toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })
+                : 'Now'
+              next.push({
+                id: m.id,
+                author: m.author,
+                text: m.text,
+                time: timeStr,
+                source: 'youtube',
+                isOwner: m.isOwner,
+                isModerator: m.isModerator,
+              })
+              changed = true
+            }
+            return changed ? next.slice(-150) : prev
+          })
+        }
+
+        if (res?.pollUpdate) {
+          setActivePoll(res.pollUpdate)
+          if (res.pollUpdate.status === 'active') {
+            createRoomPoll(res.pollUpdate)
+          }
+        }
+      } catch (err) {
+        console.warn('YouTube chat poll warning:', err?.message || err)
+        nextDelay = 10000
+      } finally {
+        if (!cancelled) {
+          timerId = setTimeout(pollChat, nextDelay)
+        }
+      }
+    }
+
+    pollChat()
+
+    return () => {
+      cancelled = true
+      if (timerId) clearTimeout(timerId)
+    }
+  }, [ytLiveChatId, createRoomPoll])
+
   // Sync host local audio + camera + screen tracks to guest and cloud compositor over WebRTC
   useEffect(() => {
     const audioTrack =
@@ -225,6 +387,7 @@ export default function StreamPage() {
       currentLayout,
       isCameraEnabled,
       isCameraMirrored,
+      cameraCrop,
       isScreenShareEnabled,
       isGuestOnStage,
       hostName,
@@ -240,6 +403,7 @@ export default function StreamPage() {
     currentLayout,
     isCameraEnabled,
     isCameraMirrored,
+    cameraCrop,
     isScreenShareEnabled,
     isGuestOnStage,
     hostName,
@@ -300,6 +464,7 @@ export default function StreamPage() {
     currentLayout,
     isCameraEnabled,
     isCameraMirrored,
+    cameraCrop,
     isScreenShareEnabled,
     isGuestOnStage,
     remotePeer,
@@ -692,6 +857,7 @@ export default function StreamPage() {
     const storedRtmp = parsedTarget?.rtmpUrl || ''
     const storedTitle = parsedTarget?.title || 'StreamXT Live'
     const storedWatchUrl = parsedTarget?.watchUrl || ''
+    const storedBroadcastId = parsedTarget?.broadcastId || ''
 
     let parsedExtra = []
     try {
@@ -709,6 +875,7 @@ export default function StreamPage() {
     setDraftExtraTargets(Array.isArray(parsedExtra) ? parsedExtra : [])
     setStreamTitle(storedTitle)
     setStreamWatchUrl(storedWatchUrl)
+    setStreamBroadcastId(storedBroadcastId)
 
     initializeCamera()
 
@@ -772,12 +939,135 @@ export default function StreamPage() {
     }
   }
 
-  const handleSendChat = (text) => {
+  const handleSendChat = async (text) => {
+    const clean = text.trim()
+    if (!clean) return false
+
+    if (ytLiveChatId) {
+      setChatSending(true)
+      try {
+        const res = await apiFetch('/api/v1/youtube/chat/messages', {
+          method: 'POST',
+          body: { liveChatId: ytLiveChatId, message: clean },
+        })
+        const sent = res?.message
+        if (sent?.id && !seenChatIdsRef.current.has(sent.id)) {
+          seenChatIdsRef.current.add(sent.id)
+          const timeStr = sent.publishedAt
+            ? new Date(sent.publishedAt).toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+              })
+            : 'Now'
+          setChatMessages((prev) => [
+            ...prev.slice(-149),
+            {
+              id: sent.id,
+              author: sent.author,
+              text: sent.text,
+              time: timeStr,
+              source: 'youtube',
+              isOwner: sent.isOwner,
+              isModerator: sent.isModerator,
+            },
+          ])
+        }
+        return true
+      } catch (err) {
+        toast.error(err?.message || 'Could not send YouTube chat message', { theme: 'dark' })
+        return false
+      } finally {
+        setChatSending(false)
+      }
+    }
+
+    if (sendRoomChat(clean)) {
+      return true
+    }
+
     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    setChatMessages((prev) => [
-      ...prev,
-      { id: `msg-${Date.now()}`, author: hostName, text, time },
-    ])
+    const localMsg = {
+      id: `local-${Date.now()}`,
+      author: hostName,
+      text: clean,
+      time,
+      source: 'room',
+    }
+    seenChatIdsRef.current.add(localMsg.id)
+    setChatMessages((prev) => [...prev.slice(-149), localMsg])
+    return true
+  }
+
+  const handleCreatePoll = async (newPoll) => {
+    if (ytLiveChatId) {
+      setPollBusy(true)
+      try {
+        const res = await apiFetch('/api/v1/youtube/polls', {
+          method: 'POST',
+          body: {
+            liveChatId: ytLiveChatId,
+            question: newPoll.question,
+            options: newPoll.options.map((o) => o.label),
+          },
+        })
+        const ytPoll = res?.poll
+        if (ytPoll) {
+          setActivePoll(ytPoll)
+          setShowPollOnStream(true)
+          createRoomPoll(ytPoll)
+          toast.success('YouTube live poll launched!', { theme: 'dark' })
+          return true
+        }
+      } catch (err) {
+        toast.info(
+          err?.message
+            ? `${err.message}. Launched as Room Poll instead.`
+            : 'Launched as Room Poll.',
+          { theme: 'dark' },
+        )
+      } finally {
+        setPollBusy(false)
+      }
+    }
+
+    const roomPollObj = { ...newPoll, source: 'room' }
+    setActivePoll(roomPollObj)
+    setShowPollOnStream(true)
+    createRoomPoll(roomPollObj)
+    return true
+  }
+
+  const handleVotePoll = (optionId) => {
+    if (!activePoll || activePoll.source === 'youtube') return
+    if (voteRoomPoll(optionId)) return
+    setActivePoll((prev) =>
+      prev
+        ? {
+            ...prev,
+            options: prev.options.map((opt) =>
+              opt.id === optionId ? { ...opt, votes: opt.votes + 1 } : opt,
+            ),
+          }
+        : prev,
+    )
+  }
+
+  const handleEndPoll = async () => {
+    if (activePoll?.source === 'youtube' && activePoll?.id) {
+      setPollBusy(true)
+      try {
+        await apiFetch(`/api/v1/youtube/polls/${encodeURIComponent(activePoll.id)}/close`, {
+          method: 'POST',
+        })
+      } catch (err) {
+        console.warn('Could not close YouTube poll remotely:', err?.message || err)
+      } finally {
+        setPollBusy(false)
+      }
+    }
+    endRoomPoll()
+    setActivePoll(null)
+    setShowPollOnStream(false)
   }
 
   return (
@@ -1022,6 +1312,18 @@ export default function StreamPage() {
 
               <Button
                 type="button"
+                className={`rounded-[100%] h-10 w-10 cursor-pointer ${
+                  cameraCrop.zoom > 1 || cameraCrop.fit === 'contain' ? 'border-white' : ''
+                }`}
+                variant="outline"
+                title="Crop & frame camera"
+                onClick={() => setShowCropModal(true)}
+              >
+                <Crop />
+              </Button>
+
+              <Button
+                type="button"
                 className="rounded-[100%] h-10 w-10 cursor-pointer"
                 variant="outline"
                 onClick={() => {
@@ -1077,9 +1379,14 @@ export default function StreamPage() {
                   onSendMessage={handleSendChat}
                   onTogglePin={(id) => setPinnedChatId((prev) => (prev === id ? null : id))}
                   onClearMessages={() => {
+                    seenChatIdsRef.current.clear()
                     setChatMessages([])
                     setPinnedChatId(null)
                   }}
+                  youtubeChatStatus={
+                    ytLiveChatId ? 'connected' : ytConnected ? 'inactive' : 'idle'
+                  }
+                  isSending={chatSending}
                 />
               ) : null}
 
@@ -1087,27 +1394,12 @@ export default function StreamPage() {
                 <PollsPanel
                   poll={activePoll}
                   showPollOnStream={showPollOnStream}
-                  onCreatePoll={(newPoll) => {
-                    setActivePoll(newPoll)
-                    setShowPollOnStream(true)
-                  }}
-                  onVoteOption={(optionId) =>
-                    setActivePoll((prev) =>
-                      prev
-                        ? {
-                            ...prev,
-                            options: prev.options.map((opt) =>
-                              opt.id === optionId ? { ...opt, votes: opt.votes + 1 } : opt,
-                            ),
-                          }
-                        : prev,
-                    )
-                  }
+                  onCreatePoll={handleCreatePoll}
+                  onVoteOption={handleVotePoll}
                   onToggleShowOnStream={setShowPollOnStream}
-                  onEndPoll={() => {
-                    setActivePoll(null)
-                    setShowPollOnStream(false)
-                  }}
+                  onEndPoll={handleEndPoll}
+                  youtubeConnected={Boolean(ytLiveChatId)}
+                  isBusy={pollBusy}
                 />
               ) : null}
 
@@ -1356,6 +1648,18 @@ export default function StreamPage() {
             </div>
           </form>
         </div>
+      ) : null}
+
+      {showCropModal ? (
+        <CameraCropModal
+          stream={stream}
+          isMirrored={isCameraMirrored}
+          currentLayout={currentLayout}
+          overlays={overlays}
+          crop={cameraCrop}
+          onChange={setCameraCrop}
+          onClose={() => setShowCropModal(false)}
+        />
       ) : null}
 
       <ToastContainer />

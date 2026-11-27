@@ -112,3 +112,51 @@ export async function prepareBroadcast(req: Request, res: Response): Promise<voi
   const broadcast = await youtubeService.prepareBroadcastForStream(req.auth.sub, req.body);
   sendSuccess(res, { broadcast }, 201);
 }
+
+export async function getChatSession(req: Request, res: Response): Promise<void> {
+  if (!req.auth) {
+    throw new UnauthorizedError('Authentication required', ErrorCode.UNAUTHORIZED);
+  }
+  const broadcastId =
+    typeof req.query.broadcastId === 'string' ? req.query.broadcastId : undefined;
+  const session = await youtubeService.resolveLiveChatSession(req.auth.sub, broadcastId);
+  sendSuccess(res, session);
+}
+
+export async function getChatMessages(req: Request, res: Response): Promise<void> {
+  if (!req.auth) {
+    throw new UnauthorizedError('Authentication required', ErrorCode.UNAUTHORIZED);
+  }
+  const liveChatId = typeof req.query.liveChatId === 'string' ? req.query.liveChatId : '';
+  const pageToken = typeof req.query.pageToken === 'string' ? req.query.pageToken : undefined;
+  const result = await youtubeService.getLiveChatMessages(req.auth.sub, {
+    liveChatId,
+    pageToken,
+  });
+  sendSuccess(res, result);
+}
+
+export async function postChatMessage(req: Request, res: Response): Promise<void> {
+  if (!req.auth) {
+    throw new UnauthorizedError('Authentication required', ErrorCode.UNAUTHORIZED);
+  }
+  const message = await youtubeService.sendLiveChatMessage(req.auth.sub, req.body);
+  sendSuccess(res, { message }, 201);
+}
+
+export async function createPoll(req: Request, res: Response): Promise<void> {
+  if (!req.auth) {
+    throw new UnauthorizedError('Authentication required', ErrorCode.UNAUTHORIZED);
+  }
+  const poll = await youtubeService.createYouTubePoll(req.auth.sub, req.body);
+  sendSuccess(res, { poll }, 201);
+}
+
+export async function closePoll(req: Request, res: Response): Promise<void> {
+  if (!req.auth) {
+    throw new UnauthorizedError('Authentication required', ErrorCode.UNAUTHORIZED);
+  }
+  const pollId = String(req.params.pollId || '');
+  await youtubeService.closeYouTubePoll(req.auth.sub, pollId);
+  sendSuccess(res, { closed: true });
+}

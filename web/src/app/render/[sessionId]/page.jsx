@@ -136,6 +136,7 @@ function CloudRenderContent() {
     currentLayout: studioState?.currentLayout || 'single',
     isCameraEnabled: studioState?.isCameraEnabled ?? true,
     isCameraMirrored: studioState?.isCameraMirrored ?? false,
+    cameraCrop: studioState?.cameraCrop || null,
     isScreenShareEnabled: studioState?.isScreenShareEnabled ?? false,
     isGuestOnStage: studioState?.isGuestOnStage ?? true,
     remotePeer: guestPeer,

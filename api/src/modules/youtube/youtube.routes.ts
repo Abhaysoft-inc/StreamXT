@@ -4,8 +4,10 @@ import { authenticate } from '../../middleware/authenticate';
 import { validate } from '../../middleware/validate';
 import * as youtubeController from './youtube.controller';
 import {
+  createYouTubePollSchema,
   createYouTubeStreamSchema,
   prepareYouTubeBroadcastSchema,
+  sendYouTubeChatSchema,
 } from './youtube.schema';
 
 const router = Router();
@@ -29,6 +31,27 @@ router.post(
   asyncHandler(authenticate),
   validate({ body: prepareYouTubeBroadcastSchema }),
   asyncHandler(youtubeController.prepareBroadcast),
+);
+
+router.get('/chat/session', asyncHandler(authenticate), asyncHandler(youtubeController.getChatSession));
+router.get('/chat/messages', asyncHandler(authenticate), asyncHandler(youtubeController.getChatMessages));
+router.post(
+  '/chat/messages',
+  asyncHandler(authenticate),
+  validate({ body: sendYouTubeChatSchema }),
+  asyncHandler(youtubeController.postChatMessage),
+);
+
+router.post(
+  '/polls',
+  asyncHandler(authenticate),
+  validate({ body: createYouTubePollSchema }),
+  asyncHandler(youtubeController.createPoll),
+);
+router.post(
+  '/polls/:pollId/close',
+  asyncHandler(authenticate),
+  asyncHandler(youtubeController.closePoll),
 );
 
 export const youtubeRouter = router;
