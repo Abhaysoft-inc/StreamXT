@@ -6,6 +6,7 @@ import { env } from './config/env';
 import { errorHandler } from './middleware/errorHandler';
 import { notFoundHandler } from './middleware/notFoundHandler';
 import { authRouter } from './modules/auth/auth.routes';
+import { youtubeRouter } from './modules/youtube/youtube.routes';
 import { sendSuccess } from './utils/response';
 
 export function createApp() {
@@ -32,6 +33,7 @@ export function createApp() {
   });
 
   app.use('/api/v1/auth', authRouter);
+  app.use('/api/v1/youtube', youtubeRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

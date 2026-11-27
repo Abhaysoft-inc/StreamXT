@@ -1,34 +1,125 @@
 "use client"
 
-import React, { useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { Figtree } from 'next/font/google'
 import { FaX } from 'react-icons/fa6'
 import { CiStreamOn } from 'react-icons/ci'
 import { IoMdAdd } from 'react-icons/io'
 import { FaYoutube } from 'react-icons/fa'
+import { KeyRound, Plus, RefreshCw, Unlink } from 'lucide-react'
 import { toast } from 'react-toastify'
 import { useRouter } from 'next/navigation'
 import { Button } from '../ui/button'
+import { Icons } from '../ui/icons'
+import { apiFetch } from '@/lib/api-client'
 
 const figtree = Figtree({
   subsets: ['latin'],
 })
 
-const StreamDestinationModel = ({ setIsVisible }) => {
+function maskKey(key) {
+  if (!key || key.length <= 8) return '••••••••'
+  return `${key.slice(0, 4)}••••${key.slice(-4)}`
+}
+
+const StreamDestinationModel = ({
+  setIsVisible,
+  initialDestination = '',
+  initialYoutubeMode = '',
+}) => {
   const router = useRouter()
-  const [streamDestination, setstreamDestination] = useState('')
+  const [streamDestination, setstreamDestination] = useState(initialDestination)
+  const [youtubeMode, setYoutubeMode] = useState(initialYoutubeMode) // '' | 'manual' | 'google'
   const [youtubeStreamKey, setyoutubeStreamKey] = useState('')
 
-  const handleGoLive = async () => {
-    if (streamDestination === 'youtube') {
-      if (youtubeStreamKey.trim() === '') {
-        toast("YouTube Stream Key Can't be blank!", { theme: 'dark' })
-        return
+  // Google / YouTube OAuth state
+  const [ytLoading, setYtLoading] = useState(false)
+  const [ytConnection, setYtConnection] = useState(null)
+  const [ytStreams, setYtStreams] = useState([])
+  const [selectedStreamId, setSelectedStreamId] = useState('')
+  const [newStreamTitle, setNewStreamTitle] = useState('')
+  const [isCreatingStream, setIsCreatingStream] = useState(false)
+  const [ytError, setYtError] = useState('')
+
+  const loadYouTubeStreams = useCallback(async () => {
+    setYtError('')
+    setYtLoading(true)
+    try {
+      const conn = await apiFetch('/api/v1/youtube/connection')
+      setYtConnection(conn)
+
+      if (conn.connected) {
+        const streamsData = await apiFetch('/api/v1/youtube/streams')
+        const list = streamsData.streams || []
+        setYtStreams(list)
+        if (list.length > 0) {
+          setSelectedStreamId((prev) => prev || list[0].id)
+        }
+      } else {
+        setYtStreams([])
       }
-      sessionStorage.setItem('YTStreamKey', youtubeStreamKey.trim())
-      router.push('/stream')
+    } catch (err) {
+      setYtError(err?.message || 'Failed to load YouTube account details')
+    } finally {
+      setYtLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (streamDestination === 'youtube' && youtubeMode === 'google') {
+      loadYouTubeStreams()
+    }
+  }, [streamDestination, youtubeMode, loadYouTubeStreams])
+
+  const handleGoLiveWithKey = (key) => {
+    const trimmed = (key || '').trim()
+    if (!trimmed) {
+      toast("YouTube Stream Key Can't be blank!", { theme: 'dark' })
+      return
+    }
+    sessionStorage.setItem('YTStreamKey', trimmed)
+    router.push('/stream')
+  }
+
+  const handleCreateYouTubeStream = async (e) => {
+    e.preventDefault()
+    const title = newStreamTitle.trim()
+    if (!title) return
+    setIsCreatingStream(true)
+    setYtError('')
+    try {
+      const data = await apiFetch('/api/v1/youtube/streams', {
+        method: 'POST',
+        body: { title },
+      })
+      if (data.stream) {
+        setYtStreams((prev) => [data.stream, ...prev])
+        setSelectedStreamId(data.stream.id)
+        setNewStreamTitle('')
+        toast.success('Created YouTube stream key!', { theme: 'dark' })
+      }
+    } catch (err) {
+      setYtError(err?.message || 'Could not create YouTube stream key')
+    } finally {
+      setIsCreatingStream(false)
     }
   }
+
+  const handleDisconnectYouTube = async () => {
+    setYtLoading(true)
+    try {
+      await apiFetch('/api/v1/youtube/connection', { method: 'DELETE' })
+      setYtConnection({ connected: false, googleConfigured: ytConnection?.googleConfigured, channel: null })
+      setYtStreams([])
+      setSelectedStreamId('')
+    } catch (err) {
+      toast.error(err?.message || 'Failed to disconnect YouTube', { theme: 'dark' })
+    } finally {
+      setYtLoading(false)
+    }
+  }
+
+  const selectedStream = ytStreams.find((s) => s.id === selectedStreamId)
 
   return (
     <div
@@ -71,7 +162,10 @@ const StreamDestinationModel = ({ setIsVisible }) => {
 
           <button
             type="button"
-            onClick={() => setstreamDestination('youtube')}
+            onClick={() => {
+              setstreamDestination('youtube')
+              setYoutubeMode('')
+            }}
             className="flex flex-col items-center cursor-pointer group"
           >
             <div
@@ -121,20 +215,235 @@ const StreamDestinationModel = ({ setIsVisible }) => {
             </div>
           ) : streamDestination === 'youtube' ? (
             <div className="space-y-4">
-              <h3 className="text-base font-semibold sm:text-lg">YouTube Stream Settings</h3>
-              <div>
-                <label className="mb-1 block text-sm">Stream Key</label>
-                <input
-                  type="text"
-                  value={youtubeStreamKey}
-                  className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm outline-none focus:border-gray-500"
-                  placeholder="Your YouTube stream key"
-                  onChange={(e) => setyoutubeStreamKey(e.target.value)}
-                />
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-semibold sm:text-lg">YouTube Stream</h3>
+                {youtubeMode ? (
+                  <button
+                    type="button"
+                    onClick={() => setYoutubeMode('')}
+                    className="text-xs text-neutral-400 hover:text-white cursor-pointer"
+                  >
+                    Change method
+                  </button>
+                ) : null}
               </div>
-              <Button className="w-full sm:w-auto cursor-pointer" onClick={handleGoLive}>
-                Go Live!
-              </Button>
+
+              {/* Two options when clicking YouTube */}
+              {!youtubeMode ? (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => setYoutubeMode('manual')}
+                    className="flex flex-col items-start gap-2 rounded-xl border border-neutral-700 bg-neutral-900/70 p-4 text-left transition hover:border-neutral-500 hover:bg-neutral-800/80 cursor-pointer"
+                  >
+                    <div className="rounded-lg bg-neutral-800 p-2">
+                      <KeyRound className="size-5 text-white" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-white">Enter Stream Key</p>
+                      <p className="mt-0.5 text-xs text-neutral-400">
+                        Paste your YouTube Studio stream key manually
+                      </p>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setYoutubeMode('google')}
+                    className="flex flex-col items-start gap-2 rounded-xl border border-neutral-700 bg-neutral-900/70 p-4 text-left transition hover:border-neutral-500 hover:bg-neutral-800/80 cursor-pointer"
+                  >
+                    <div className="rounded-lg bg-neutral-800 p-2">
+                      <Icons.google className="size-5" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-white">Login with Google</p>
+                      <p className="mt-0.5 text-xs text-neutral-400">
+                        Connect your YouTube account &amp; fetch stream keys
+                      </p>
+                    </div>
+                  </button>
+                </div>
+              ) : null}
+
+              {/* Option 1: Manual Stream Key */}
+              {youtubeMode === 'manual' ? (
+                <div className="space-y-4">
+                  <div>
+                    <label className="mb-1 block text-sm">Stream Key</label>
+                    <input
+                      type="password"
+                      value={youtubeStreamKey}
+                      className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm outline-none focus:border-gray-500"
+                      placeholder="Your YouTube stream key"
+                      onChange={(e) => setyoutubeStreamKey(e.target.value)}
+                    />
+                  </div>
+                  <Button
+                    className="w-full sm:w-auto cursor-pointer"
+                    onClick={() => handleGoLiveWithKey(youtubeStreamKey)}
+                  >
+                    Go Live!
+                  </Button>
+                </div>
+              ) : null}
+
+              {/* Option 2: Google OAuth -> Fetch YouTube Stream Keys */}
+              {youtubeMode === 'google' ? (
+                <div className="space-y-4">
+                  {ytError ? (
+                    <p className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+                      {ytError}
+                    </p>
+                  ) : null}
+
+                  {ytLoading ? (
+                    <div className="flex items-center justify-center py-8 text-sm text-neutral-400">
+                      <Icons.spinner className="mr-2 size-4 animate-spin" />
+                      Loading YouTube account...
+                    </div>
+                  ) : ytConnection?.connected ? (
+                    <div className="space-y-4">
+                      {/* Connected Channel Header */}
+                      <div className="flex items-center justify-between gap-3 rounded-lg border border-neutral-700 bg-neutral-900/70 px-3 py-2.5">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          {ytConnection.channel?.thumbnail ? (
+                            <img
+                              src={ytConnection.channel.thumbnail}
+                              alt={ytConnection.channel.title || 'YouTube Channel'}
+                              className="size-8 rounded-full object-cover"
+                            />
+                          ) : (
+                            <FaYoutube className="size-6 shrink-0 text-red-500" />
+                          )}
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-white">
+                              {ytConnection.channel?.title || 'Connected YouTube Account'}
+                            </p>
+                            <p className="text-[11px] text-emerald-400">Connected via Google</p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={loadYouTubeStreams}
+                            title="Refresh stream keys"
+                            className="rounded p-1.5 text-neutral-400 hover:bg-neutral-800 hover:text-white cursor-pointer"
+                          >
+                            <RefreshCw className="size-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleDisconnectYouTube}
+                            title="Disconnect Google account"
+                            className="rounded p-1.5 text-neutral-400 hover:bg-neutral-800 hover:text-red-400 cursor-pointer"
+                          >
+                            <Unlink className="size-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Fetched Stream Keys */}
+                      {ytStreams.length > 0 ? (
+                        <div className="space-y-2">
+                          <label className="block text-xs font-medium text-neutral-300">
+                            Select a YouTube Stream Key
+                          </label>
+                          <div className="max-h-44 space-y-2 overflow-y-auto pr-1">
+                            {ytStreams.map((item) => {
+                              const active = selectedStreamId === item.id
+                              return (
+                                <button
+                                  key={item.id}
+                                  type="button"
+                                  onClick={() => setSelectedStreamId(item.id)}
+                                  className={`w-full rounded-lg border p-2.5 text-left transition cursor-pointer ${
+                                    active
+                                      ? 'border-white bg-neutral-800'
+                                      : 'border-neutral-700 bg-neutral-900/60 hover:border-neutral-600'
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="truncate text-sm font-medium text-white">
+                                      {item.title}
+                                    </span>
+                                    <span className="font-mono text-xs text-neutral-400">
+                                      {maskKey(item.streamKey)}
+                                    </span>
+                                  </div>
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="rounded-lg border border-dashed border-neutral-700 p-3 text-center text-xs text-neutral-400">
+                          No existing YouTube stream keys found. Create one below!
+                        </p>
+                      )}
+
+                      {/* Create New YouTube Stream Key */}
+                      <form onSubmit={handleCreateYouTubeStream} className="flex gap-2">
+                        <input
+                          type="text"
+                          value={newStreamTitle}
+                          onChange={(e) => setNewStreamTitle(e.target.value)}
+                          placeholder="New stream key name (e.g. StreamXT Live)"
+                          className="flex-1 rounded border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs outline-none focus:border-gray-500"
+                        />
+                        <Button
+                          type="submit"
+                          size="sm"
+                          variant="outline"
+                          disabled={isCreatingStream || !newStreamTitle.trim()}
+                          className="cursor-pointer"
+                        >
+                          {isCreatingStream ? (
+                            <Icons.spinner className="size-3.5 animate-spin" />
+                          ) : (
+                            <>
+                              <Plus className="mr-1 size-3.5" />
+                              Create
+                            </>
+                          )}
+                        </Button>
+                      </form>
+
+                      <Button
+                        className="w-full cursor-pointer"
+                        disabled={!selectedStream}
+                        onClick={() => handleGoLiveWithKey(selectedStream?.streamKey)}
+                      >
+                        Use Selected Key &amp; Go Live!
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3 rounded-xl border border-neutral-700 bg-neutral-900/60 p-4 text-center">
+                      <p className="text-sm text-neutral-200">
+                        Sign in with Google to automatically fetch or create your YouTube stream key.
+                      </p>
+                      {ytConnection && !ytConnection.googleConfigured ? (
+                        <p className="text-xs text-amber-300">
+                          Google OAuth credentials are not set in <code>api/.env</code> yet (
+                          <code>GOOGLE_CLIENT_ID</code> / <code>GOOGLE_CLIENT_SECRET</code>).
+                        </p>
+                      ) : null}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full cursor-pointer"
+                        onClick={() => {
+                          window.location.href =
+                            '/api/v1/youtube/oauth/start?redirect=/dashboard?yt_modal=1'
+                        }}
+                      >
+                        <Icons.google className="mr-2 size-4" />
+                        Continue with Google
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className="py-8 text-center text-base text-neutral-400 sm:text-lg">

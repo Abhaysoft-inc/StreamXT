@@ -17,6 +17,11 @@ const Sidebar = ({ onClose }) => {
     onClose?.()
   }
 
+  const scrollToRecentStreams = () => {
+    document.getElementById('past-streams')?.scrollIntoView({ behavior: 'smooth' })
+    onClose?.()
+  }
+
   return (
     <div
       className={`flex h-full w-full flex-col justify-between border-r border-border bg-background px-4 py-6 lg:py-8 ${figtree.className}`}
@@ -58,7 +63,7 @@ const Sidebar = ({ onClose }) => {
           <li>
             <button
               type="button"
-              onClick={() => handleUnavailable('Recent Streams')}
+              onClick={scrollToRecentStreams}
               className="flex w-full items-center gap-3 rounded-full bg-[#141212] px-4 py-3 text-left text-base font-medium transition hover:bg-[#292626] cursor-pointer"
             >
               <FaHistory />
