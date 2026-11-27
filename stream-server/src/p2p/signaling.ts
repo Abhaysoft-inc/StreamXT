@@ -1,8 +1,10 @@
 import type { Server, Socket } from 'socket.io';
 
+export type P2PRole = 'host' | 'guest' | 'compositor';
+
 export interface P2PPeerInfo {
   peerId: string;
-  role: 'host' | 'guest';
+  role: P2PRole;
   name: string;
   micEnabled: boolean;
   videoEnabled: boolean;
@@ -10,9 +12,14 @@ export interface P2PPeerInfo {
 }
 
 const rooms = new Map<string, Map<string, P2PPeerInfo>>();
+const roomStudioStates = new Map<string, unknown>();
 
 export function getActiveP2PRoomCount(): number {
   return rooms.size;
+}
+
+export function setRoomStudioState(roomId: string, state: unknown): void {
+  roomStudioStates.set(roomId, state);
 }
 
 export function registerP2PSignaling(io: Server): void {
@@ -25,7 +32,7 @@ export function registerP2PSignaling(io: Server): void {
       'p2p:join',
       (payload: {
         roomId?: string;
-        role?: 'host' | 'guest';
+        role?: P2PRole;
         name?: string;
         micEnabled?: boolean;
         videoEnabled?: boolean;
@@ -37,8 +44,9 @@ export function registerP2PSignaling(io: Server): void {
           return;
         }
 
-        const role: 'host' | 'guest' = payload.role === 'host' ? 'host' : 'guest';
-        const name = (payload.name || (role === 'host' ? 'Host' : 'Guest')).trim().slice(0, 40);
+        const role: P2PRole =
+          payload.role === 'host' || payload.role === 'compositor' ? payload.role : 'guest';
+        const name = (payload.name || role).trim().slice(0, 40);
 
         let room = rooms.get(roomId);
         if (!room) {
@@ -46,7 +54,6 @@ export function registerP2PSignaling(io: Server): void {
           rooms.set(roomId, room);
         }
 
-        // Prevent more than 1 guest in 1:1 P2P mode so connections stay clean and reliable
         if (role === 'guest') {
           const existingGuests = Array.from(room.values()).filter(
             (p) => p.role === 'guest' && p.peerId !== socket.id,
@@ -79,6 +86,11 @@ export function registerP2PSignaling(io: Server): void {
           peers: existingPeers,
         });
 
+        const savedState = roomStudioStates.get(roomId);
+        if (role === 'compositor' && savedState) {
+          socket.emit('p2p:studio-state', savedState);
+        }
+
         socket.to(roomId).emit('p2p:peer-joined', peerInfo);
       },
     );
@@ -101,6 +113,12 @@ export function registerP2PSignaling(io: Server): void {
         socket.to(joinedRoomId).emit('p2p:peer-state', peer);
       },
     );
+
+    socket.on('p2p:studio-state', (state: unknown) => {
+      if (!joinedRoomId) return;
+      roomStudioStates.set(joinedRoomId, state);
+      socket.to(joinedRoomId).emit('p2p:studio-state', state);
+    });
 
     socket.on('p2p:offer', (payload: { to?: string; sdp?: unknown }) => {
       if (!joinedRoomId || !payload.to || !payload.sdp) return;
@@ -133,6 +151,7 @@ export function registerP2PSignaling(io: Server): void {
         room.delete(socket.id);
         if (room.size === 0) {
           rooms.delete(joinedRoomId);
+          roomStudioStates.delete(joinedRoomId);
         }
       }
       socket.to(joinedRoomId).emit('p2p:peer-left', { peerId: socket.id });

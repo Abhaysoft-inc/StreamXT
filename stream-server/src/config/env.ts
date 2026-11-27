@@ -17,6 +17,7 @@ const envSchema = z.object({
   MAX_CONCURRENT_STREAMS: z.coerce.number().int().positive().default(10),
   MAX_BACKPRESSURE_BYTES: z.coerce.number().int().positive().default(16 * 1024 * 1024),
   FFMPEG_PATH: z.string().min(1).default('ffmpeg'),
+  CHROMIUM_PATH: z.string().optional().default(''),
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -7,6 +7,14 @@ import { prisma } from '../../services/db';
 const streamTicketSecret = new TextEncoder().encode(env.STREAM_TICKET_SECRET);
 
 export type StreamQuality = '720p30' | '1080p30' | '720p60';
+export type StreamMode = 'cloud' | 'browser';
+
+export interface StreamTargetInput {
+  destination: 'youtube' | 'custom_rtmp';
+  streamKey: string;
+  rtmpUrl?: string;
+  label?: string;
+}
 
 interface WorkerHealth {
   url: string;
@@ -62,15 +70,10 @@ async function selectBestWorker(): Promise<string> {
     return healthy[0]!.url;
   }
 
-  // Fallback to primary configured URL if health check is momentarily unreachable
   return candidates[0]!;
 }
 
-function buildRtmpTarget(input: {
-  destination: 'youtube' | 'custom_rtmp';
-  streamKey: string;
-  rtmpUrl?: string;
-}): string {
+function buildRtmpTarget(input: StreamTargetInput): string {
   if (input.destination === 'youtube') {
     return `rtmp://a.rtmp.youtube.com/live2/${input.streamKey}`;
   }
@@ -82,21 +85,51 @@ function buildRtmpTarget(input: {
 export async function createStreamSession(
   userId: string,
   input: {
-    destination: 'youtube' | 'custom_rtmp';
-    streamKey: string;
+    destination?: 'youtube' | 'custom_rtmp';
+    streamKey?: string;
     rtmpUrl?: string;
+    targets?: StreamTargetInput[];
+    mode: StreamMode;
+    roomId?: string;
     title?: string;
     quality: StreamQuality;
   },
 ) {
   const workerUrl = await selectBestWorker();
-  const rtmpTarget = buildRtmpTarget(input);
+
+  const resolvedTargets: StreamTargetInput[] =
+    input.targets && input.targets.length > 0
+      ? input.targets
+      : [
+          {
+            destination: input.destination!,
+            streamKey: input.streamKey!,
+            rtmpUrl: input.rtmpUrl,
+          },
+        ];
+
+  const rtmpTargets = resolvedTargets.map(buildRtmpTarget);
+  const destinationSummary =
+    resolvedTargets.length > 1 ? 'multistream' : resolvedTargets[0]!.destination;
+
+  const safeDestinationsMeta = resolvedTargets.map((t) => ({
+    destination: t.destination,
+    label: t.label || (t.destination === 'youtube' ? 'YouTube' : 'Custom RTMP'),
+  }));
 
   const session = await prisma.streamSession.create({
     data: {
       userId,
-      title: input.title || (input.destination === 'youtube' ? 'YouTube Live' : 'Custom RTMP Live'),
-      destination: input.destination,
+      title:
+        input.title ||
+        (resolvedTargets.length > 1
+          ? `Multistream (${resolvedTargets.length} targets)`
+          : resolvedTargets[0]!.destination === 'youtube'
+            ? 'YouTube Live'
+            : 'Custom RTMP Live'),
+      destination: destinationSummary,
+      destinations: safeDestinationsMeta,
+      mode: input.mode,
       quality: input.quality,
       status: 'PREPARING',
       workerUrl,
@@ -106,9 +139,12 @@ export async function createStreamSession(
   const ticket = await new SignJWT({
     sessionId: session.id,
     userId,
-    destination: input.destination,
+    destination: destinationSummary,
+    mode: input.mode,
+    roomId: input.roomId || null,
     quality: input.quality,
-    rtmpTarget,
+    rtmpTarget: rtmpTargets[0],
+    rtmpTargets,
   })
     .setProtectedHeader({ alg: 'HS256' })
     .setSubject(userId)
@@ -121,6 +157,8 @@ export async function createStreamSession(
     ingestUrl: workerUrl,
     ticket,
     quality: session.quality,
+    mode: session.mode,
+    targetCount: rtmpTargets.length,
   };
 }
 
@@ -133,6 +171,8 @@ export async function listUserStreamSessions(userId: string) {
       id: true,
       title: true,
       destination: true,
+      destinations: true,
+      mode: true,
       quality: true,
       status: true,
       startedAt: true,

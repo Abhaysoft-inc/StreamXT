@@ -69,9 +69,13 @@ export default function StreamPage() {
   const [isStreaming, setIsStreaming] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const [encodingMode, setEncodingMode] = useState('cloud') // 'cloud' | 'browser'
+  const [draftEncodingMode, setDraftEncodingMode] = useState('cloud')
   const [streamDestination, setStreamDestination] = useState('youtube')
   const [customRtmpUrl, setCustomRtmpUrl] = useState('')
   const [streamKey, setStreamKey] = useState('')
+  const [extraTargets, setExtraTargets] = useState([]) // [{ id, rtmpUrl, streamKey, label }]
+  const [draftExtraTargets, setDraftExtraTargets] = useState([])
   const [streamTitle, setStreamTitle] = useState('StreamXT Live')
   const [streamWatchUrl, setStreamWatchUrl] = useState('')
   const [streamQuality, setStreamQuality] = useState('720p30')
@@ -125,6 +129,7 @@ export default function StreamPage() {
     p2pError,
     syncLocalTracks,
     emitMediaState,
+    emitStudioState,
   } = useP2PCall({
     roomId,
     role: 'host',
@@ -182,17 +187,22 @@ export default function StreamPage() {
     }
   }, [p2pError])
 
-  // Sync host local audio + video tracks to guest over WebRTC P2P
+  // Sync host local audio + camera + screen tracks to guest and cloud compositor over WebRTC
   useEffect(() => {
     const audioTrack =
       stream?.getAudioTracks().find((t) => t.readyState === 'live') || null
-    const videoTrack = isScreenShareEnabled
+    const camTrack = isCameraEnabled
+      ? stream?.getVideoTracks().find((t) => t.readyState === 'live') || null
+      : null
+    const screenTrack = isScreenShareEnabled
       ? screenStream?.getVideoTracks().find((t) => t.readyState === 'live') || null
-      : isCameraEnabled
-        ? stream?.getVideoTracks().find((t) => t.readyState === 'live') || null
-        : null
+      : null
 
-    void syncLocalTracks({ audioTrack, videoTrack })
+    void syncLocalTracks({
+      audioTrack,
+      videoTrack: camTrack || screenTrack,
+      screenTrack,
+    })
     emitMediaState({
       micEnabled: isMicEnabled,
       videoEnabled: isCameraEnabled || isScreenShareEnabled,
@@ -206,6 +216,40 @@ export default function StreamPage() {
     isScreenShareEnabled,
     syncLocalTracks,
     emitMediaState,
+  ])
+
+  // Broadcast Studio overlays, brand, polls, layout & chat state to the cloud compositor
+  useEffect(() => {
+    if (!roomId) return
+    emitStudioState({
+      currentLayout,
+      isCameraEnabled,
+      isCameraMirrored,
+      isScreenShareEnabled,
+      isGuestOnStage,
+      hostName,
+      brand,
+      overlays,
+      pinnedChat,
+      activePoll,
+      showPollOnStream,
+      elapsedSeconds,
+    })
+  }, [
+    roomId,
+    currentLayout,
+    isCameraEnabled,
+    isCameraMirrored,
+    isScreenShareEnabled,
+    isGuestOnStage,
+    hostName,
+    brand,
+    overlays,
+    pinnedChat,
+    activePoll,
+    showPollOnStream,
+    elapsedSeconds,
+    emitStudioState,
   ])
 
   // Preload uploaded image layers into Image cache for 60fps canvas rendering
@@ -477,15 +521,43 @@ export default function StreamPage() {
   const startStreaming = async () => {
     if (isConnecting || isStreaming) return
 
-    if (!streamKey) {
+    const primaryValid =
+      Boolean(streamKey) &&
+      (streamDestination === 'youtube' || /^rtmps?:\/\/.+/i.test(customRtmpUrl))
+    const validExtraTargets = extraTargets.filter(
+      (t) => t.streamKey?.trim() && /^rtmps?:\/\/.+/i.test(t.rtmpUrl || ''),
+    )
+
+    if (!primaryValid && validExtraTargets.length === 0) {
       toast('Add a stream key first', { theme: 'dark' })
       setDraftStreamKey('')
       setDraftDestination(streamDestination)
       setDraftRtmpUrl(customRtmpUrl)
       setDraftQuality(streamQuality)
+      setDraftEncodingMode(encodingMode)
+      setDraftExtraTargets(extraTargets)
       setShowKeyModal(true)
       return
     }
+
+    const targets = [
+      ...(primaryValid
+        ? [
+            {
+              destination: streamDestination,
+              streamKey,
+              ...(streamDestination === 'custom_rtmp' ? { rtmpUrl: customRtmpUrl } : {}),
+              label: streamDestination === 'youtube' ? 'YouTube' : 'Custom RTMP',
+            },
+          ]
+        : []),
+      ...validExtraTargets.map((t) => ({
+        destination: 'custom_rtmp',
+        streamKey: t.streamKey.trim(),
+        rtmpUrl: t.rtmpUrl.trim(),
+        label: t.label || 'Multistream RTMP',
+      })),
+    ]
 
     const canvas = canvasRef.current
     if (!canvas) return
@@ -496,9 +568,9 @@ export default function StreamPage() {
       const session = await apiFetch('/api/v1/streams/sessions', {
         method: 'POST',
         body: {
-          destination: streamDestination,
-          streamKey,
-          ...(streamDestination === 'custom_rtmp' ? { rtmpUrl: customRtmpUrl } : {}),
+          targets,
+          mode: encodingMode,
+          roomId,
           title: streamTitle,
           quality: streamQuality,
         },
@@ -511,10 +583,31 @@ export default function StreamPage() {
       socketRef.current = newSocket
 
       newSocket.on('connect', () => {
-        newSocket.emit('stream:start')
+        if (encodingMode === 'cloud') {
+          newSocket.emit('stream:start-cloud', {
+            roomId,
+            studioState: studioStateRef.current,
+          })
+        } else {
+          newSocket.emit('stream:start')
+        }
       })
 
       newSocket.on('stream:ready', () => {
+        if (encodingMode === 'cloud') {
+          // Headless cloud compositor handles canvas rendering & MediaRecorder
+          setElapsedSeconds(0)
+          setIsConnecting(false)
+          setIsStreaming(true)
+          toast.success(
+            `Cloud broadcast started (${targets.length} ${
+              targets.length === 1 ? 'target' : 'targets'
+            })!`,
+            { theme: 'dark' },
+          )
+          return
+        }
+
         try {
           const mixedStream = buildMixedMediaStream(canvas)
           const mimeType = pickSupportedMimeType()
@@ -600,12 +693,20 @@ export default function StreamPage() {
     const storedTitle = parsedTarget?.title || 'StreamXT Live'
     const storedWatchUrl = parsedTarget?.watchUrl || ''
 
+    let parsedExtra = []
+    try {
+      const rawExtras = sessionStorage.getItem('StreamExtraTargets')
+      if (rawExtras) parsedExtra = JSON.parse(rawExtras)
+    } catch {}
+
     setStreamKey(storedKey)
     setDraftStreamKey(storedKey)
     setStreamDestination(storedDestination)
     setDraftDestination(storedDestination)
     setCustomRtmpUrl(storedRtmp)
     setDraftRtmpUrl(storedRtmp)
+    setExtraTargets(Array.isArray(parsedExtra) ? parsedExtra : [])
+    setDraftExtraTargets(Array.isArray(parsedExtra) ? parsedExtra : [])
     setStreamTitle(storedTitle)
     setStreamWatchUrl(storedWatchUrl)
 
@@ -633,6 +734,9 @@ export default function StreamPage() {
     setStreamDestination(draftDestination)
     setCustomRtmpUrl(trimmedRtmp)
     setStreamQuality(draftQuality)
+    setEncodingMode(draftEncodingMode)
+    setExtraTargets(draftExtraTargets)
+    sessionStorage.setItem('StreamExtraTargets', JSON.stringify(draftExtraTargets))
 
     if (!trimmed) {
       sessionStorage.removeItem('YTStreamKey')
@@ -925,6 +1029,8 @@ export default function StreamPage() {
                   setDraftDestination(streamDestination)
                   setDraftRtmpUrl(customRtmpUrl)
                   setDraftQuality(streamQuality)
+                  setDraftEncodingMode(encodingMode)
+                  setDraftExtraTargets(extraTargets)
                   setShowKeyModal(true)
                 }}
               >
@@ -1025,7 +1131,7 @@ export default function StreamPage() {
           <form
             onSubmit={handleSaveStreamKey}
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-2xl"
+            className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-xl border border-border bg-card p-5 shadow-2xl"
           >
             <div className="flex items-center justify-between">
               <h3 className="text-base font-semibold">Studio Settings</h3>
@@ -1053,6 +1159,32 @@ export default function StreamPage() {
                   className="size-4 rounded border-border accent-white cursor-pointer"
                 />
               </label>
+
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Encoding Mode</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { id: 'cloud', label: 'Cloud Compositor' },
+                    { id: 'browser', label: 'Browser Local' },
+                  ].map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setDraftEncodingMode(m.id)}
+                      className={`rounded-md border px-2 py-1.5 text-xs font-medium cursor-pointer ${
+                        draftEncodingMode === m.id
+                          ? 'border-white bg-white text-black'
+                          : 'border-border bg-background text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Cloud mode offloads canvas compositing, encoding, and multistreaming to the server.
+                </p>
+              </div>
 
               <div className="space-y-2">
                 <Label className="text-xs text-muted-foreground">Stream Quality</Label>
@@ -1127,6 +1259,85 @@ export default function StreamPage() {
                   onChange={(e) => setDraftStreamKey(e.target.value)}
                   placeholder="Paste your stream key"
                 />
+              </div>
+
+              {/* Extra Multistream RTMP Targets */}
+              <div className="space-y-2 border-t border-border pt-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs text-muted-foreground">
+                    Multistream Destinations ({draftExtraTargets.length})
+                  </Label>
+                  {draftExtraTargets.length < 4 ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDraftExtraTargets((prev) => [
+                          ...prev,
+                          { id: `t-${Date.now()}`, label: '', rtmpUrl: '', streamKey: '' },
+                        ])
+                      }
+                      className="text-xs font-medium text-foreground hover:underline cursor-pointer"
+                    >
+                      + Add RTMP
+                    </button>
+                  ) : null}
+                </div>
+
+                {draftExtraTargets.map((target, idx) => (
+                  <div
+                    key={target.id}
+                    className="space-y-2 rounded-lg border border-border bg-background/50 p-2.5"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <Input
+                        value={target.label}
+                        onChange={(e) =>
+                          setDraftExtraTargets((prev) =>
+                            prev.map((item, i) =>
+                              i === idx ? { ...item, label: e.target.value } : item,
+                            ),
+                          )
+                        }
+                        placeholder="Label (e.g. Twitch)"
+                        className="h-7 text-xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDraftExtraTargets((prev) => prev.filter((_, i) => i !== idx))
+                        }
+                        className="text-xs text-muted-foreground hover:text-destructive cursor-pointer"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <Input
+                      value={target.rtmpUrl}
+                      onChange={(e) =>
+                        setDraftExtraTargets((prev) =>
+                          prev.map((item, i) =>
+                            i === idx ? { ...item, rtmpUrl: e.target.value } : item,
+                          ),
+                        )
+                      }
+                      placeholder="rtmp://live.twitch.tv/app"
+                      className="h-7 text-xs"
+                    />
+                    <Input
+                      type="password"
+                      value={target.streamKey}
+                      onChange={(e) =>
+                        setDraftExtraTargets((prev) =>
+                          prev.map((item, i) =>
+                            i === idx ? { ...item, streamKey: e.target.value } : item,
+                          ),
+                        )
+                      }
+                      placeholder="Stream key"
+                      className="h-7 text-xs"
+                    />
+                  </div>
+                ))}
               </div>
             </div>
 

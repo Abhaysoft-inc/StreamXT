@@ -28,7 +28,9 @@ model StreamSession {
   id              String    @id @default(cuid())
   userId          String
   title           String?
-  destination     String    // 'youtube' | 'custom_rtmp'
+  destination     String    // 'youtube' | 'custom_rtmp' | 'multistream'
+  destinations    Json?
+  mode            String    @default("cloud") // 'cloud' | 'browser'
   quality         String    @default("720p30")
   status          String    @default("PREPARING") // 'PREPARING' | 'LIVE' | 'ENDED' | 'FAILED'
   workerUrl       String

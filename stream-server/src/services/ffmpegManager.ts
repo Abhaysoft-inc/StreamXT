@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import type { Socket } from 'socket.io';
 import { env } from '../config/env';
+import { cloudCompositor } from './cloudCompositor';
 import { reportStreamStatus } from './statusReporter';
 import type { StreamQuality, StreamTicketClaims } from './ticket.service';
 
@@ -38,9 +39,9 @@ const QUALITY_PRESETS: Record<StreamQuality, QualityPreset> = {
 
 interface ActiveStreamWorker {
   sessionId: string;
-  socket: Socket;
+  controlSocket: Socket;
   process: ChildProcessWithoutNullStreams;
-  rtmpTarget: string;
+  rtmpTargets: string[];
   startedAtMs: number;
   pendingChunks: Buffer[];
   pendingBytes: number;
@@ -57,6 +58,29 @@ function redactTarget(rtmpTarget: string): string {
   return `${rtmpTarget.slice(0, lastSlash)}/[REDACTED]`;
 }
 
+function redactAllTargets(text: string, targets: string[]): string {
+  let clean = text;
+  for (const t of targets) {
+    if (t) {
+      clean = clean.split(t).join(redactTarget(t));
+    }
+  }
+  return clean;
+}
+
+function buildOutputArgs(rtmpTargets: string[]): string[] {
+  if (rtmpTargets.length === 1) {
+    return ['-flvflags', 'no_duration_filesize', '-f', 'flv', rtmpTargets[0]!];
+  }
+
+  // Single encode fanned out across multiple RTMP destinations using FFmpeg tee muxer
+  const teeSpec = rtmpTargets
+    .map((url) => `[f=flv:onfail=ignore]${url}`)
+    .join('|');
+
+  return ['-flags', '+global_header', '-map', '0:v', '-map', '0:a', '-f', 'tee', teeSpec];
+}
+
 export class FfmpegStreamManager {
   private readonly workers = new Map<string, ActiveStreamWorker>();
 
@@ -68,9 +92,29 @@ export class FfmpegStreamManager {
     return this.workers.size < env.MAX_CONCURRENT_STREAMS;
   }
 
-  startStream(socket: Socket, claims: StreamTicketClaims): void {
+  attachControlSocket(sessionId: string, socket: Socket): void {
+    const worker = this.workers.get(sessionId);
+    if (worker) {
+      worker.controlSocket = socket;
+    }
+  }
+
+  startStream(
+    socket: Socket,
+    claims: StreamTicketClaims,
+    options: { isControlSocket?: boolean } = { isControlSocket: true },
+  ): void {
+    const isControlSocket = options.isControlSocket !== false;
+
     if (this.workers.has(claims.sessionId)) {
-      socket.emit('stream:ready', { sessionId: claims.sessionId });
+      if (isControlSocket) {
+        this.attachControlSocket(claims.sessionId, socket);
+      }
+      socket.emit('stream:ready', {
+        sessionId: claims.sessionId,
+        mode: claims.mode,
+        targetCount: claims.rtmpTargets.length,
+      });
       return;
     }
 
@@ -122,11 +166,7 @@ export class FfmpegStreamManager {
       '44100',
       '-b:a',
       preset.audioBitrate,
-      '-flvflags',
-      'no_duration_filesize',
-      '-f',
-      'flv',
-      claims.rtmpTarget,
+      ...buildOutputArgs(claims.rtmpTargets),
     ];
 
     const child = spawn(env.FFMPEG_PATH, ffmpegArgs, {
@@ -135,9 +175,9 @@ export class FfmpegStreamManager {
 
     const worker: ActiveStreamWorker = {
       sessionId: claims.sessionId,
-      socket,
+      controlSocket: socket,
       process: child,
-      rtmpTarget: claims.rtmpTarget,
+      rtmpTargets: claims.rtmpTargets,
       startedAtMs: Date.now(),
       pendingChunks: [],
       pendingBytes: 0,
@@ -149,8 +189,9 @@ export class FfmpegStreamManager {
     };
 
     this.workers.set(claims.sessionId, worker);
+    const summary = claims.rtmpTargets.map(redactTarget).join(', ');
     console.log(
-      `[stream:${claims.sessionId}] Started FFmpeg (${claims.quality}) -> ${redactTarget(claims.rtmpTarget)}`,
+      `[stream:${claims.sessionId}] Started FFmpeg (${claims.quality}, ${claims.mode}, ${claims.rtmpTargets.length} targets) -> ${summary}`,
     );
 
     child.stdin.on('drain', () => {
@@ -171,7 +212,8 @@ export class FfmpegStreamManager {
     child.on('error', (err) => {
       console.error(`[stream:${claims.sessionId}] FFmpeg spawn error:`, err.message);
       this.workers.delete(claims.sessionId);
-      socket.emit('stream:error', {
+      void cloudCompositor.stopCompositor(claims.sessionId);
+      worker.controlSocket.emit('stream:error', {
         sessionId: claims.sessionId,
         message: 'Failed to launch FFmpeg encoder on stream server',
       });
@@ -184,6 +226,7 @@ export class FfmpegStreamManager {
 
     child.on('close', (code, signal) => {
       this.workers.delete(claims.sessionId);
+      void cloudCompositor.stopCompositor(claims.sessionId);
       const durationSeconds = Math.max(0, Math.floor((Date.now() - worker.startedAtMs) / 1000));
       const cleanStop = worker.stopping || code === 0 || signal === 'SIGTERM';
 
@@ -192,19 +235,26 @@ export class FfmpegStreamManager {
       );
 
       if (cleanStop) {
-        socket.emit('stream:ended', { sessionId: claims.sessionId, durationSeconds });
+        worker.controlSocket.emit('stream:ended', {
+          sessionId: claims.sessionId,
+          durationSeconds,
+        });
         void reportStreamStatus({
           sessionId: claims.sessionId,
           status: 'ENDED',
           durationSeconds,
         });
       } else {
-        const sanitizedError = worker.lastErrorLine
-          .replace(claims.rtmpTarget, redactTarget(claims.rtmpTarget))
-          .slice(0, 300);
+        const sanitizedError = redactAllTargets(
+          worker.lastErrorLine,
+          worker.rtmpTargets,
+        ).slice(0, 300);
         const message =
           sanitizedError || `Streaming encoder exited unexpectedly (code ${code ?? 'unknown'})`;
-        socket.emit('stream:error', { sessionId: claims.sessionId, message });
+        worker.controlSocket.emit('stream:error', {
+          sessionId: claims.sessionId,
+          message,
+        });
         void reportStreamStatus({
           sessionId: claims.sessionId,
           status: 'FAILED',
@@ -214,7 +264,11 @@ export class FfmpegStreamManager {
       }
     });
 
-    socket.emit('stream:ready', { sessionId: claims.sessionId });
+    socket.emit('stream:ready', {
+      sessionId: claims.sessionId,
+      mode: claims.mode,
+      targetCount: claims.rtmpTargets.length,
+    });
   }
 
   writeChunk(sessionId: string, chunk: Buffer): void {
@@ -225,7 +279,6 @@ export class FfmpegStreamManager {
       worker.pendingChunks.push(chunk);
       worker.pendingBytes += chunk.length;
 
-      // Bound queued memory under slow RTMP egress so workers stay stable at scale
       while (worker.pendingBytes > env.MAX_BACKPRESSURE_BYTES && worker.pendingChunks.length > 1) {
         const dropped = worker.pendingChunks.shift();
         if (dropped) {
@@ -274,7 +327,7 @@ export class FfmpegStreamManager {
       const bitrateKbps = bitrateMatch ? Math.round(Number(bitrateMatch[1])) : 0;
       const uptimeSeconds = Math.floor((Date.now() - worker.startedAtMs) / 1000);
 
-      worker.socket.emit('stream:stats', {
+      worker.controlSocket.emit('stream:stats', {
         sessionId: worker.sessionId,
         fps,
         bitrateKbps,
@@ -292,6 +345,8 @@ export class FfmpegStreamManager {
   }
 
   stopStream(sessionId: string): void {
+    void cloudCompositor.stopCompositor(sessionId);
+
     const worker = this.workers.get(sessionId);
     if (!worker || worker.stopping) return;
 
@@ -315,6 +370,7 @@ export class FfmpegStreamManager {
   }
 
   async stopAll(): Promise<void> {
+    await cloudCompositor.stopAll();
     const ids = Array.from(this.workers.keys());
     for (const id of ids) {
       this.stopStream(id);
