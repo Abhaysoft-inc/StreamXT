@@ -1,0 +1,67 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String             @id @default(cuid())
+  email             String             @unique
+  username          String?            @unique
+  passwordHash      String?
+  name              String?
+  avatarUrl         String?
+  emailVerifiedAt   DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  oauthAccounts     OAuthAccount[]
+  sessions          Session[]
+  verificationCodes VerificationCode[]
+}
+
+model OAuthAccount {
+  id                String   @id @default(cuid())
+  userId            String
+  provider          String
+  providerAccountId String
+  createdAt         DateTime @default(now())
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id               String    @id @default(cuid())
+  userId           String
+  refreshTokenHash String    @unique
+  tokenFamilyId    String
+  userAgent        String?
+  ipAddress        String?
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenFamilyId])
+}
+
+model VerificationCode {
+  id         String    @id @default(cuid())
+  userId     String?
+  email      String
+  purpose    String
+  codeHash   String
+  attempts   Int       @default(0)
+  expiresAt  DateTime
+  lastSentAt DateTime  @default(now())
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+  user       User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([email, purpose])
+}
