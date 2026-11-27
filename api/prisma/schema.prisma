@@ -21,6 +21,26 @@ model User {
   sessions          Session[]
   verificationCodes VerificationCode[]
   youtubeConnection YouTubeConnection?
+  streamSessions    StreamSession[]
+}
+
+model StreamSession {
+  id              String    @id @default(cuid())
+  userId          String
+  title           String?
+  destination     String    // 'youtube' | 'custom_rtmp'
+  quality         String    @default("720p30")
+  status          String    @default("PREPARING") // 'PREPARING' | 'LIVE' | 'ENDED' | 'FAILED'
+  workerUrl       String
+  startedAt       DateTime?
+  endedAt         DateTime?
+  durationSeconds Int       @default(0)
+  errorMessage    String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }
 
 model YouTubeConnection {

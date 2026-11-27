@@ -6,7 +6,7 @@ import { FaX } from 'react-icons/fa6'
 import { CiStreamOn } from 'react-icons/ci'
 import { IoMdAdd } from 'react-icons/io'
 import { FaYoutube } from 'react-icons/fa'
-import { KeyRound, Plus, RefreshCw, Unlink } from 'lucide-react'
+import { Globe, KeyRound, Link2, Lock, Plus, RefreshCw, Unlink } from 'lucide-react'
 import { toast } from 'react-toastify'
 import { useRouter } from 'next/navigation'
 import { Button } from '../ui/button'
@@ -31,6 +31,8 @@ const StreamDestinationModel = ({
   const [streamDestination, setstreamDestination] = useState(initialDestination)
   const [youtubeMode, setYoutubeMode] = useState(initialYoutubeMode) // '' | 'manual' | 'google'
   const [youtubeStreamKey, setyoutubeStreamKey] = useState('')
+  const [customRtmpUrl, setCustomRtmpUrl] = useState('')
+  const [customStreamKey, setCustomStreamKey] = useState('')
 
   // Google / YouTube OAuth state
   const [ytLoading, setYtLoading] = useState(false)
@@ -71,13 +73,45 @@ const StreamDestinationModel = ({
     }
   }, [streamDestination, youtubeMode, loadYouTubeStreams])
 
-  const handleGoLiveWithKey = (key) => {
+  const handleGoLiveWithKey = (key, title) => {
     const trimmed = (key || '').trim()
     if (!trimmed) {
       toast("YouTube Stream Key Can't be blank!", { theme: 'dark' })
       return
     }
     sessionStorage.setItem('YTStreamKey', trimmed)
+    sessionStorage.setItem(
+      'StreamTarget',
+      JSON.stringify({
+        destination: 'youtube',
+        streamKey: trimmed,
+        title: title || 'YouTube Live',
+      }),
+    )
+    router.push('/stream')
+  }
+
+  const handleGoLiveCustomRtmp = () => {
+    const url = customRtmpUrl.trim()
+    const key = customStreamKey.trim()
+    if (!url || !/^rtmps?:\/\/.+/i.test(url)) {
+      toast('Enter a valid rtmp:// or rtmps:// URL', { theme: 'dark' })
+      return
+    }
+    if (!key) {
+      toast("Stream Key can't be blank!", { theme: 'dark' })
+      return
+    }
+    sessionStorage.setItem('YTStreamKey', key)
+    sessionStorage.setItem(
+      'StreamTarget',
+      JSON.stringify({
+        destination: 'custom_rtmp',
+        rtmpUrl: url,
+        streamKey: key,
+        title: 'Custom RTMP Live',
+      }),
+    )
     router.push('/stream')
   }
 
@@ -200,6 +234,8 @@ const StreamDestinationModel = ({
                 <label className="mb-1 block text-sm">RTMP URL</label>
                 <input
                   type="text"
+                  value={customRtmpUrl}
+                  onChange={(e) => setCustomRtmpUrl(e.target.value)}
                   className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm outline-none focus:border-gray-500"
                   placeholder="rtmp://your-server-url/live"
                 />
@@ -207,11 +243,16 @@ const StreamDestinationModel = ({
               <div>
                 <label className="mb-1 block text-sm">Stream Key</label>
                 <input
-                  type="text"
+                  type="password"
+                  value={customStreamKey}
+                  onChange={(e) => setCustomStreamKey(e.target.value)}
                   className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm outline-none focus:border-gray-500"
                   placeholder="Your stream key"
                 />
               </div>
+              <Button className="w-full sm:w-auto cursor-pointer" onClick={handleGoLiveCustomRtmp}>
+                Go Live!
+              </Button>
             </div>
           ) : streamDestination === 'youtube' ? (
             <div className="space-y-4">
@@ -412,7 +453,9 @@ const StreamDestinationModel = ({
                       <Button
                         className="w-full cursor-pointer"
                         disabled={!selectedStream}
-                        onClick={() => handleGoLiveWithKey(selectedStream?.streamKey)}
+                        onClick={() =>
+                          handleGoLiveWithKey(selectedStream?.streamKey, selectedStream?.title)
+                        }
                       >
                         Use Selected Key &amp; Go Live!
                       </Button>

@@ -3,7 +3,10 @@ import { asyncHandler } from '../../middleware/asyncHandler';
 import { authenticate } from '../../middleware/authenticate';
 import { validate } from '../../middleware/validate';
 import * as youtubeController from './youtube.controller';
-import { createYouTubeStreamSchema } from './youtube.schema';
+import {
+  createYouTubeStreamSchema,
+  prepareYouTubeBroadcastSchema,
+} from './youtube.schema';
 
 const router = Router();
 
@@ -20,6 +23,12 @@ router.post(
   asyncHandler(authenticate),
   validate({ body: createYouTubeStreamSchema }),
   asyncHandler(youtubeController.createStream),
+);
+router.post(
+  '/broadcasts',
+  asyncHandler(authenticate),
+  validate({ body: prepareYouTubeBroadcastSchema }),
+  asyncHandler(youtubeController.prepareBroadcast),
 );
 
 export const youtubeRouter = router;

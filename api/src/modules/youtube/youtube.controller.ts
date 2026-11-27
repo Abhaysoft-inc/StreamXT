@@ -104,3 +104,11 @@ export async function listHistory(req: Request, res: Response): Promise<void> {
   const history = await youtubeService.listPastBroadcasts(req.auth.sub);
   sendSuccess(res, history);
 }
+
+export async function prepareBroadcast(req: Request, res: Response): Promise<void> {
+  if (!req.auth) {
+    throw new UnauthorizedError('Authentication required', ErrorCode.UNAUTHORIZED);
+  }
+  const broadcast = await youtubeService.prepareBroadcastForStream(req.auth.sub, req.body);
+  sendSuccess(res, { broadcast }, 201);
+}

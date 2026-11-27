@@ -561,3 +561,85 @@ export async function listPastBroadcasts(userId: string): Promise<{
     broadcasts,
   };
 }
+
+export async function prepareBroadcastForStream(
+  userId: string,
+  input: {
+    streamId: string;
+    title: string;
+    description?: string;
+    privacyStatus: 'public' | 'unlisted' | 'private';
+  },
+): Promise<{
+  broadcastId: string;
+  streamId: string;
+  title: string;
+  privacyStatus: 'public' | 'unlisted' | 'private';
+  watchUrl: string;
+}> {
+  const accessToken = await getValidAccessToken(userId);
+
+  const insertRes = await fetch(
+    'https://www.googleapis.com/youtube/v3/liveBroadcasts?part=snippet,status,contentDetails',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        snippet: {
+          title: input.title,
+          description: input.description ?? '',
+          scheduledStartTime: new Date().toISOString(),
+        },
+        status: {
+          privacyStatus: input.privacyStatus,
+          selfDeclaredMadeForKids: false,
+        },
+        contentDetails: {
+          enableAutoStart: true,
+          enableAutoStop: true,
+        },
+      }),
+    },
+  );
+
+  const broadcastData = (await insertRes.json()) as {
+    id?: string;
+    error?: { message?: string };
+  };
+
+  if (!insertRes.ok || !broadcastData.id) {
+    throw new ExternalServiceError(
+      broadcastData.error?.message || 'Failed to create YouTube broadcast',
+      ErrorCode.OAUTH_PROVIDER_ERROR,
+    );
+  }
+
+  const bindRes = await fetch(
+    `https://www.googleapis.com/youtube/v3/liveBroadcasts/bind?id=${encodeURIComponent(
+      broadcastData.id,
+    )}&part=id,snippet,contentDetails,status&streamId=${encodeURIComponent(input.streamId)}`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+
+  const bindData = (await bindRes.json()) as { error?: { message?: string } };
+  if (!bindRes.ok) {
+    throw new ExternalServiceError(
+      bindData.error?.message || 'Created broadcast but failed to bind stream key',
+      ErrorCode.OAUTH_PROVIDER_ERROR,
+    );
+  }
+
+  return {
+    broadcastId: broadcastData.id,
+    streamId: input.streamId,
+    title: input.title,
+    privacyStatus: input.privacyStatus,
+    watchUrl: `https://www.youtube.com/watch?v=${broadcastData.id}`,
+  };
+}

@@ -36,6 +36,15 @@ const envSchema = z.object({
   GITHUB_CLIENT_SECRET: z.string().optional().default(''),
   GOOGLE_CLIENT_ID: z.string().optional().default(''),
   GOOGLE_CLIENT_SECRET: z.string().optional().default(''),
+  STREAM_SERVER_URLS: z.string().default('http://localhost:3001'),
+  STREAM_TICKET_SECRET: z
+    .string()
+    .min(32, 'STREAM_TICKET_SECRET must be at least 32 characters')
+    .default('streamxt-dev-stream-ticket-secret-key-32-chars'),
+  INTERNAL_WORKER_SECRET: z
+    .string()
+    .min(16, 'INTERNAL_WORKER_SECRET must be at least 16 characters')
+    .default('streamxt-dev-internal-worker-secret'),
 });
 
 const parsed = envSchema.safeParse(process.env);
