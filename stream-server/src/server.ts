@@ -5,6 +5,7 @@ import express from 'express';
 import helmet from 'helmet';
 import { Server } from 'socket.io';
 import { env } from './config/env';
+import { getActiveP2PRoomCount, registerP2PSignaling } from './p2p/signaling';
 import { streamManager } from './services/ffmpegManager';
 import { verifyStreamTicket, type StreamTicketClaims } from './services/ticket.service';
 
@@ -38,6 +39,7 @@ app.get('/metrics', (_req, res) => {
     success: true,
     data: {
       activeStreams: streamManager.getActiveCount(),
+      activeP2PRooms: getActiveP2PRoomCount(),
       maxStreams: env.MAX_CONCURRENT_STREAMS,
       uptimeSeconds: Math.floor(process.uptime()),
       loadAverage: os.loadavg(),
@@ -57,6 +59,8 @@ const io = new Server(httpServer, {
   pingTimeout: 20000,
   pingInterval: 10000,
 });
+
+registerP2PSignaling(io);
 
 io.use(async (socket, next) => {
   const token = socket.handshake.auth?.token;

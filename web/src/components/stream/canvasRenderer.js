@@ -298,6 +298,7 @@ export function renderStudioFrame({
   height,
   camVideo,
   screenVideo,
+  remoteVideo,
   state,
   loadedImages,
   nowMs,
@@ -307,6 +308,8 @@ export function renderStudioFrame({
     isCameraEnabled,
     isCameraMirrored = false,
     isScreenShareEnabled,
+    isGuestOnStage = false,
+    remotePeer = null,
     isStreaming,
     elapsedSeconds = 0,
     hostName,
@@ -328,10 +331,34 @@ export function renderStudioFrame({
 
   const camReady = isCameraEnabled && camVideo && camVideo.readyState >= 2
   const screenReady = isScreenShareEnabled && screenVideo && screenVideo.readyState >= 2
+  const remoteVideoActive =
+    isGuestOnStage &&
+    remotePeer &&
+    (remotePeer.videoEnabled || remotePeer.screenSharing) &&
+    remoteVideo &&
+    remoteVideo.readyState >= 2
   const videoFilter = getCssVideoFilter(overlays?.videoFilter)
 
   // Main Video Layer
-  if (currentLayout === 'screen' && screenReady) {
+  if (currentLayout === 'guest') {
+    if (remoteVideoActive) {
+      ctx.drawImage(remoteVideo, 0, 0, width, height)
+    } else if (isGuestOnStage && remotePeer) {
+      ctx.fillStyle = '#18181b'
+      ctx.fillRect(0, 0, width, height)
+      ctx.fillStyle = '#e4e4e7'
+      ctx.font = '600 28px sans-serif'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText(`${remotePeer.name} · Audio Only`, width / 2, height / 2)
+    } else {
+      ctx.fillStyle = '#a1a1aa'
+      ctx.font = '600 26px sans-serif'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText('Waiting for guest...', width / 2, height / 2)
+    }
+  } else if (currentLayout === 'screen' && screenReady) {
     ctx.save()
     ctx.filter = videoFilter
     ctx.drawImage(screenVideo, 0, 0, width, height)
@@ -374,7 +401,7 @@ export function renderStudioFrame({
       ctx.stroke()
       ctx.restore()
     }
-  } else if (currentLayout === 'duo' && camReady) {
+  } else if (currentLayout === 'duo') {
     const gap = 14
     const paneW = (width - gap * 3) / 2
     const paneH = height - gap * 2 - tickerHeight
@@ -382,25 +409,49 @@ export function renderStudioFrame({
     const rightX = gap * 2 + paneW
     const topY = gap + tickerTopOffset
 
+    // Left pane: Host
     ctx.save()
     drawRoundedRect(ctx, leftX, topY, paneW, paneH, 14)
-    ctx.clip()
-    ctx.filter = videoFilter
-    drawCameraVideo(ctx, camVideo, leftX, topY, paneW, paneH, isCameraMirrored)
+    if (camReady) {
+      ctx.clip()
+      ctx.filter = videoFilter
+      drawCameraVideo(ctx, camVideo, leftX, topY, paneW, paneH, isCameraMirrored)
+    } else {
+      ctx.fillStyle = '#18181b'
+      ctx.fill()
+      ctx.strokeStyle = '#27272a'
+      ctx.lineWidth = 2
+      ctx.stroke()
+      ctx.fillStyle = '#a1a1aa'
+      ctx.font = '600 22px sans-serif'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText(`${hostName || 'Host'} · Camera off`, leftX + paneW / 2, topY + paneH / 2)
+    }
     ctx.restore()
 
+    // Right pane: Guest (video / screen / audio-only / waiting)
     ctx.save()
     drawRoundedRect(ctx, rightX, topY, paneW, paneH, 14)
-    ctx.fillStyle = '#18181b'
-    ctx.fill()
-    ctx.strokeStyle = '#27272a'
-    ctx.lineWidth = 2
-    ctx.stroke()
-    ctx.fillStyle = '#a1a1aa'
-    ctx.font = '600 22px sans-serif'
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillText('Waiting for guest...', rightX + paneW / 2, topY + paneH / 2)
+    if (remoteVideoActive) {
+      ctx.clip()
+      ctx.drawImage(remoteVideo, rightX, topY, paneW, paneH)
+    } else {
+      ctx.fillStyle = '#18181b'
+      ctx.fill()
+      ctx.strokeStyle = '#27272a'
+      ctx.lineWidth = 2
+      ctx.stroke()
+      ctx.fillStyle = '#a1a1aa'
+      ctx.font = '600 22px sans-serif'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      const guestLabel =
+        isGuestOnStage && remotePeer
+          ? `${remotePeer.name} · Audio Only`
+          : 'Waiting for guest...'
+      ctx.fillText(guestLabel, rightX + paneW / 2, topY + paneH / 2)
+    }
     ctx.restore()
   } else if (camReady) {
     ctx.save()

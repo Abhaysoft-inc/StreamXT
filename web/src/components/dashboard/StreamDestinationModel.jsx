@@ -41,6 +41,9 @@ const StreamDestinationModel = ({
   const [selectedStreamId, setSelectedStreamId] = useState('')
   const [newStreamTitle, setNewStreamTitle] = useState('')
   const [isCreatingStream, setIsCreatingStream] = useState(false)
+  const [broadcastTitle, setBroadcastTitle] = useState('StreamXT Live')
+  const [privacyStatus, setPrivacyStatus] = useState('unlisted')
+  const [isPreparingBroadcast, setIsPreparingBroadcast] = useState(false)
   const [ytError, setYtError] = useState('')
 
   const loadYouTubeStreams = useCallback(async () => {
@@ -450,14 +453,99 @@ const StreamDestinationModel = ({
                         </Button>
                       </form>
 
+                      {/* Broadcast Title & Visibility */}
+                      <div className="space-y-3 rounded-lg border border-neutral-700 bg-neutral-900/50 p-3">
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-neutral-300">
+                            Broadcast Title
+                          </label>
+                          <input
+                            type="text"
+                            value={broadcastTitle}
+                            maxLength={100}
+                            onChange={(e) => setBroadcastTitle(e.target.value)}
+                            placeholder="My Live Stream"
+                            className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm outline-none focus:border-gray-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="mb-1.5 block text-xs font-medium text-neutral-300">
+                            Visibility
+                          </label>
+                          <div className="grid grid-cols-3 gap-2">
+                            {[
+                              { id: 'public', label: 'Public', icon: Globe },
+                              { id: 'unlisted', label: 'Unlisted', icon: Link2 },
+                              { id: 'private', label: 'Private', icon: Lock },
+                            ].map((opt) => {
+                              const Icon = opt.icon
+                              const active = privacyStatus === opt.id
+                              return (
+                                <button
+                                  key={opt.id}
+                                  type="button"
+                                  onClick={() => setPrivacyStatus(opt.id)}
+                                  className={`flex items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-xs font-medium transition cursor-pointer ${
+                                    active
+                                      ? 'border-white bg-white text-black'
+                                      : 'border-neutral-700 bg-neutral-900 text-neutral-300 hover:border-neutral-500'
+                                  }`}
+                                >
+                                  <Icon className="size-3.5" />
+                                  <span>{opt.label}</span>
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      </div>
+
                       <Button
                         className="w-full cursor-pointer"
-                        disabled={!selectedStream}
-                        onClick={() =>
-                          handleGoLiveWithKey(selectedStream?.streamKey, selectedStream?.title)
-                        }
+                        disabled={!selectedStream || isPreparingBroadcast || !broadcastTitle.trim()}
+                        onClick={async () => {
+                          if (!selectedStream) return
+                          setIsPreparingBroadcast(true)
+                          setYtError('')
+                          try {
+                            const res = await apiFetch('/api/v1/youtube/broadcasts', {
+                              method: 'POST',
+                              body: {
+                                streamId: selectedStream.id,
+                                title: broadcastTitle.trim(),
+                                privacyStatus,
+                              },
+                            })
+                            const b = res.broadcast
+                            sessionStorage.setItem('YTStreamKey', selectedStream.streamKey)
+                            sessionStorage.setItem(
+                              'StreamTarget',
+                              JSON.stringify({
+                                destination: 'youtube',
+                                streamKey: selectedStream.streamKey,
+                                title: b.title,
+                                privacyStatus: b.privacyStatus,
+                                broadcastId: b.broadcastId,
+                                watchUrl: b.watchUrl,
+                              }),
+                            )
+                            router.push('/stream')
+                          } catch (err) {
+                            setYtError(err?.message || 'Could not configure YouTube broadcast')
+                          } finally {
+                            setIsPreparingBroadcast(false)
+                          }
+                        }}
                       >
-                        Use Selected Key &amp; Go Live!
+                        {isPreparingBroadcast ? (
+                          <>
+                            <Icons.spinner className="mr-2 size-4 animate-spin" />
+                            Preparing {privacyStatus} broadcast...
+                          </>
+                        ) : (
+                          `Go Live (${privacyStatus.charAt(0).toUpperCase() + privacyStatus.slice(1)})`
+                        )}
                       </Button>
                     </div>
                   ) : (

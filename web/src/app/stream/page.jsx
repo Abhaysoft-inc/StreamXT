@@ -30,6 +30,7 @@ import { apiFetch } from '@/lib/api-client'
 import useToggleMic from '../hooks/useToggleMic'
 import useToggleScreenShare from '../hooks/useToggleScreenShare'
 import useCameraToggle from '../hooks/useCameraToggle'
+import useP2PCall from '../hooks/useP2PCall'
 
 const figtree = Figtree({
   subsets: ['latin'],
@@ -49,11 +50,21 @@ export default function StreamPage() {
   const canvasRef = useRef(null)
   const videoRef = useRef(null)
   const screenVideoRef = useRef(null)
+  const remoteVideoRef = useRef(null)
+  const remoteAudioRef = useRef(null)
   const animationRef = useRef(null)
   const loadedImagesRef = useRef(new Map())
   const socketRef = useRef(null)
   const recorderRef = useRef(null)
   const audioCtxRef = useRef(null)
+  const audioDestRef = useRef(null)
+  const connectedAudioTrackIdsRef = useRef(new Set())
+  const streamRef = useRef(null)
+  const screenStreamRef = useRef(null)
+  const remoteStreamRef = useRef(null)
+
+  const [roomId, setRoomId] = useState('')
+  const [isGuestOnStage, setIsGuestOnStage] = useState(true)
 
   const [isStreaming, setIsStreaming] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
@@ -62,6 +73,7 @@ export default function StreamPage() {
   const [customRtmpUrl, setCustomRtmpUrl] = useState('')
   const [streamKey, setStreamKey] = useState('')
   const [streamTitle, setStreamTitle] = useState('StreamXT Live')
+  const [streamWatchUrl, setStreamWatchUrl] = useState('')
   const [streamQuality, setStreamQuality] = useState('720p30')
   const [streamStats, setStreamStats] = useState(null)
   const [showKeyModal, setShowKeyModal] = useState(false)
@@ -105,6 +117,96 @@ export default function StreamPage() {
   const [showPollOnStream, setShowPollOnStream] = useState(false)
 
   const pinnedChat = chatMessages.find((m) => m.id === pinnedChatId) || null
+
+  const {
+    connectionState: p2pState,
+    remotePeer,
+    remoteStream,
+    p2pError,
+    syncLocalTracks,
+    emitMediaState,
+  } = useP2PCall({
+    roomId,
+    role: 'host',
+    name: hostName,
+    enabled: Boolean(roomId),
+    initialMediaState: {
+      micEnabled: isMicEnabled,
+      videoEnabled: isCameraEnabled,
+      screenSharing: isScreenShareEnabled,
+    },
+  })
+
+  // Initialize roomId in URL (?room=...) so invite link stays stable across reloads
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    let currentRoom = params.get('room')
+    if (!currentRoom) {
+      currentRoom = crypto.randomUUID().slice(0, 8)
+      params.set('room', currentRoom)
+      window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`)
+    }
+    setRoomId(currentRoom)
+  }, [])
+
+  // Attach guest remote video/audio & auto-switch to duo when guest connects
+  useEffect(() => {
+    remoteStreamRef.current = remoteStream
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = remoteStream || null
+      if (remoteStream) {
+        remoteVideoRef.current.play().catch(() => {})
+      }
+    }
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.srcObject = remoteStream || null
+      if (remoteStream) {
+        remoteAudioRef.current.play().catch(() => {})
+      }
+    }
+  }, [remoteStream])
+
+  useEffect(() => {
+    if (remotePeer) {
+      setIsGuestOnStage(true)
+      setCurrentLayout((prev) => (prev === 'single' ? 'duo' : prev))
+      toast(`${remotePeer.name} joined backstage`, { theme: 'dark' })
+    } else {
+      setCurrentLayout((prev) => (prev === 'duo' || prev === 'guest' ? 'single' : prev))
+    }
+  }, [remotePeer?.peerId])
+
+  useEffect(() => {
+    if (p2pError) {
+      toast.error(p2pError, { theme: 'dark' })
+    }
+  }, [p2pError])
+
+  // Sync host local audio + video tracks to guest over WebRTC P2P
+  useEffect(() => {
+    const audioTrack =
+      stream?.getAudioTracks().find((t) => t.readyState === 'live') || null
+    const videoTrack = isScreenShareEnabled
+      ? screenStream?.getVideoTracks().find((t) => t.readyState === 'live') || null
+      : isCameraEnabled
+        ? stream?.getVideoTracks().find((t) => t.readyState === 'live') || null
+        : null
+
+    void syncLocalTracks({ audioTrack, videoTrack })
+    emitMediaState({
+      micEnabled: isMicEnabled,
+      videoEnabled: isCameraEnabled || isScreenShareEnabled,
+      screenSharing: isScreenShareEnabled,
+    })
+  }, [
+    stream,
+    screenStream,
+    isMicEnabled,
+    isCameraEnabled,
+    isScreenShareEnabled,
+    syncLocalTracks,
+    emitMediaState,
+  ])
 
   // Preload uploaded image layers into Image cache for 60fps canvas rendering
   useEffect(() => {
@@ -155,6 +257,8 @@ export default function StreamPage() {
     isCameraEnabled,
     isCameraMirrored,
     isScreenShareEnabled,
+    isGuestOnStage,
+    remotePeer,
     isStreaming,
     elapsedSeconds,
     hostName,
@@ -180,6 +284,7 @@ export default function StreamPage() {
         height: canvas.height,
         camVideo: videoRef.current,
         screenVideo: screenVideoRef.current,
+        remoteVideo: remoteVideoRef.current,
         state: studioStateRef.current,
         loadedImages: loadedImagesRef.current,
         nowMs: performance.now(),
@@ -226,8 +331,12 @@ export default function StreamPage() {
   const initializeCamera = async () => {
     try {
       const newStream = await navigator.mediaDevices.getUserMedia({
-        audio: isMicEnabled,
+        audio: true,
         video: { height: 720, width: 1280 },
+      })
+
+      newStream.getAudioTracks().forEach((track) => {
+        track.enabled = isMicEnabled
       })
 
       if (videoRef.current) {
@@ -243,6 +352,15 @@ export default function StreamPage() {
       console.error('Failed to initialize camera:', error)
       setIsCameraEnabled(false)
       drawCanvas()
+
+      // Fallback: try acquiring microphone audio even if camera failed
+      try {
+        const audioOnly = await navigator.mediaDevices.getUserMedia({ audio: true })
+        audioOnly.getAudioTracks().forEach((track) => {
+          track.enabled = isMicEnabled
+        })
+        setStream(audioOnly)
+      } catch {}
     }
   }
 
@@ -253,6 +371,8 @@ export default function StreamPage() {
       } catch {}
     }
     recorderRef.current = null
+    audioDestRef.current = null
+    connectedAudioTrackIdsRef.current.clear()
 
     if (audioCtxRef.current) {
       audioCtxRef.current.close().catch(() => {})
@@ -268,6 +388,44 @@ export default function StreamPage() {
     setIsStreaming(false)
     setStreamStats(null)
   }, [])
+
+  const attachAudioTracksToMixer = useCallback((mediaStream) => {
+    const audioCtx = audioCtxRef.current
+    const destination = audioDestRef.current
+    if (!audioCtx || !destination || !mediaStream) return
+
+    for (const track of mediaStream.getAudioTracks()) {
+      if (track.readyState !== 'live') continue
+      if (connectedAudioTrackIdsRef.current.has(track.id)) continue
+      try {
+        const source = audioCtx.createMediaStreamSource(new MediaStream([track]))
+        source.connect(destination)
+        connectedAudioTrackIdsRef.current.add(track.id)
+      } catch (err) {
+        console.warn('Failed to attach audio track to mixer:', err)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    streamRef.current = stream
+    if (isStreaming) {
+      attachAudioTracksToMixer(stream)
+    }
+  }, [stream, isStreaming, attachAudioTracksToMixer])
+
+  useEffect(() => {
+    screenStreamRef.current = screenStream
+    if (isStreaming && currentLayout === 'screen') {
+      attachAudioTracksToMixer(screenStream)
+    }
+  }, [screenStream, currentLayout, isStreaming, attachAudioTracksToMixer])
+
+  useEffect(() => {
+    if (isStreaming && isGuestOnStage && remoteStream) {
+      attachAudioTracksToMixer(remoteStream)
+    }
+  }, [remoteStream, isGuestOnStage, isStreaming, attachAudioTracksToMixer])
 
   const pickSupportedMimeType = () => {
     const candidates = [
@@ -285,8 +443,13 @@ export default function StreamPage() {
 
     const AudioCtx = window.AudioContext || window.webkitAudioContext
     const audioCtx = new AudioCtx({ sampleRate: 44100 })
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume().catch(() => {})
+    }
     audioCtxRef.current = audioCtx
     const destination = audioCtx.createMediaStreamDestination()
+    audioDestRef.current = destination
+    connectedAudioTrackIdsRef.current.clear()
 
     // Keep an active silent audio bed so RTMP/YouTube never rejects a video-only stream
     const silentOsc = audioCtx.createOscillator()
@@ -296,18 +459,12 @@ export default function StreamPage() {
     silentGain.connect(destination)
     silentOsc.start()
 
-    const attachAudioFromStream = (mediaStream) => {
-      if (!mediaStream) return
-      const audioTracks = mediaStream.getAudioTracks()
-      if (audioTracks.length > 0) {
-        const source = audioCtx.createMediaStreamSource(new MediaStream(audioTracks))
-        source.connect(destination)
-      }
-    }
-
-    attachAudioFromStream(stream)
+    attachAudioTracksToMixer(streamRef.current)
     if (currentLayout === 'screen') {
-      attachAudioFromStream(screenStream)
+      attachAudioTracksToMixer(screenStreamRef.current)
+    }
+    if (isGuestOnStage) {
+      attachAudioTracksToMixer(remoteStreamRef.current)
     }
 
     destination.stream.getAudioTracks().forEach((track) => {
@@ -441,6 +598,7 @@ export default function StreamPage() {
     const storedDestination = parsedTarget?.destination || 'youtube'
     const storedRtmp = parsedTarget?.rtmpUrl || ''
     const storedTitle = parsedTarget?.title || 'StreamXT Live'
+    const storedWatchUrl = parsedTarget?.watchUrl || ''
 
     setStreamKey(storedKey)
     setDraftStreamKey(storedKey)
@@ -449,6 +607,7 @@ export default function StreamPage() {
     setCustomRtmpUrl(storedRtmp)
     setDraftRtmpUrl(storedRtmp)
     setStreamTitle(storedTitle)
+    setStreamWatchUrl(storedWatchUrl)
 
     initializeCamera()
 
@@ -499,11 +658,13 @@ export default function StreamPage() {
   }
 
   const handleInviteGuest = async () => {
+    if (!roomId) return
+    const inviteUrl = `${window.location.origin}/guest/${roomId}`
     try {
-      await navigator.clipboard.writeText(window.location.href)
-      toast('Invite link copied!', { theme: 'dark' })
+      await navigator.clipboard.writeText(inviteUrl)
+      toast('Guest invite link copied!', { theme: 'dark' })
     } catch {
-      toast('Copy failed — share this URL manually', { theme: 'dark' })
+      toast(`Share this guest link: ${inviteUrl}`, { theme: 'dark' })
     }
   }
 
@@ -519,6 +680,7 @@ export default function StreamPage() {
     <div className={`min-h-screen flex flex-col bg-background text-foreground ${figtree.className}`}>
       <Navbar
         isStreaming={isStreaming}
+        watchUrl={streamWatchUrl}
         onStartStreaming={startStreaming}
         onStopStreaming={stopStreaming}
       />
@@ -576,6 +738,54 @@ export default function StreamPage() {
                 <p className="text-sm">{hostName}</p>
               </div>
             </div>
+
+            {/* Guest Backstage Tile */}
+            <audio ref={remoteAudioRef} autoPlay />
+            {remotePeer ? (
+              <div
+                className={`mt-4 box border-4 rounded relative overflow-hidden ${
+                  isGuestOnStage ? 'border-green-400' : 'border-neutral-600'
+                }`}
+              >
+                <video
+                  ref={remoteVideoRef}
+                  className={`w-full aspect-video object-cover bg-black ${
+                    remotePeer.videoEnabled || remotePeer.screenSharing ? 'block' : 'hidden'
+                  }`}
+                  autoPlay
+                  muted
+                  playsInline
+                />
+                {!remotePeer.videoEnabled && !remotePeer.screenSharing ? (
+                  <div className="w-full aspect-video bg-neutral-900 flex items-center justify-center text-xs text-neutral-400">
+                    Audio Only ({p2pState})
+                  </div>
+                ) : null}
+
+                <button
+                  type="button"
+                  onClick={() => setIsGuestOnStage((prev) => !prev)}
+                  className={`absolute top-0 left-0 px-2 rounded-br py-0.5 text-xs font-medium text-white cursor-pointer ${
+                    isGuestOnStage ? 'bg-green-400' : 'bg-neutral-700'
+                  }`}
+                >
+                  {isGuestOnStage ? 'On-stage' : 'Backstage'}
+                </button>
+
+                <div className="absolute bottom-1.5 left-2 flex gap-1.5 items-center bg-black/50 px-2 py-0.5 rounded">
+                  {remotePeer.micEnabled ? (
+                    <Mic size={16} className="font-semibold" />
+                  ) : (
+                    <MicOff size={16} className="font-semibold text-red-500" />
+                  )}
+                  <p className="text-sm">{remotePeer.name}</p>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-4 rounded border border-dashed border-border p-3 text-center text-xs text-muted-foreground">
+                Click + above to copy guest P2P invite link
+              </div>
+            )}
           </div>
         </div>
 
@@ -648,6 +858,26 @@ export default function StreamPage() {
                 />
               </div>
             </div>
+
+            {remotePeer ? (
+              <div
+                className={`flex gap-0.5 border w-fit p-0.5 rounded cursor-pointer ${
+                  currentLayout === 'guest' ? 'border-white' : 'border-[#2d2d2d]'
+                }`}
+                onClick={() => selectLayout('guest')}
+                title="Guest fullscreen layout"
+              >
+                <div
+                  className={`icon border w-8 h-6 flex items-center justify-center text-[9px] font-bold ${
+                    currentLayout === 'guest'
+                      ? 'border-white bg-white text-black'
+                      : 'border-[#2d2d2d] bg-[#2d2d2d] text-neutral-300'
+                  }`}
+                >
+                  G
+                </div>
+              </div>
+            ) : null}
           </div>
 
           {/* Controls */}

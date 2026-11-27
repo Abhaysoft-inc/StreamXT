@@ -1,14 +1,14 @@
 'use client'
 
 import React from 'react'
-import { Dot } from 'lucide-react'
+import { Dot, ExternalLink } from 'lucide-react'
 import { Figtree } from 'next/font/google'
 
 const figtree = Figtree({
   subsets: ['latin'],
 })
 
-const Navbar = ({ isStreaming, onStartStreaming, onStopStreaming }) => {
+const Navbar = ({ isStreaming, watchUrl, onStartStreaming, onStopStreaming }) => {
   const handleGoLiveClick = () => {
     if (isStreaming) {
       onStopStreaming()
@@ -33,7 +33,19 @@ const Navbar = ({ isStreaming, onStartStreaming, onStopStreaming }) => {
             <span className="text-orange-400 text-3xl">T</span>
           </p>
 
-          <ul className="nav-menu flex gap-6 items-center">
+          <ul className="nav-menu flex gap-4 sm:gap-6 items-center">
+            {watchUrl ? (
+              <a
+                href={watchUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-xs sm:text-sm text-neutral-300 hover:text-white"
+              >
+                <span>YouTube Link</span>
+                <ExternalLink className="size-3.5" />
+              </a>
+            ) : null}
+
             <button
               type="button"
               data-ripple-dark="true"
